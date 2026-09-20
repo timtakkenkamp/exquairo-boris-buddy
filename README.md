@@ -11,6 +11,8 @@ Standalone repo under **timtakkenkamp**. Patient-facing electronic buddy demo pl
 
 ## Quick start (buddy)
 
+Full runbook: [DEMO.md](./DEMO.md). Also listed from the [ExquAIro hub](https://github.com/timtakkenkamp/Exquairo).
+
 ```bash
 uv sync
 uv run streamlit run product/buddy/app.py --server.headless true

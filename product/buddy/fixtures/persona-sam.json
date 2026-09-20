@@ -1,0 +1,130 @@
+{
+  "schema_version": "0.2.0",
+  "source": "mock",
+  "generated_at": "2026-09-17T00:00:00Z",
+  "disclaimer": "Demo only. Not a diagnosis, prognosis, or medical advice. Lifestyle coaching — talk to your care provider about medical questions.",
+  "patient": {
+    "persona_id": "persona-sam",
+    "display_name": "Sam",
+    "age": 42,
+    "pronouns": "he/him",
+    "tagline": "Already moving — a few habits to tidy.",
+    "story": "Early 40s, BMI in the mid-20s, cycles to work some days, smokes occasionally, drinks more than a ‘none’ pattern.",
+    "height_cm": 178,
+    "weight_kg": 82.7,
+    "bmi": 26.1,
+    "waist_cm": 86,
+    "move_min_week": 90,
+    "sleep_hours": 7.0,
+    "sugary_drinks_week": 4,
+    "snapshot": {
+      "hba1c_t1": "5.8%",
+      "bmi": "26.1",
+      "weight": "82.7 kg",
+      "cycle_commute": "some days",
+      "smoking": "occasional",
+      "alcohol": "above none"
+    }
+  },
+  "target": {
+    "id": "hba1c_gt_6_5",
+    "label": "HbA1c above 6.5%",
+    "threshold": ">6.5%",
+    "unit": "%"
+  },
+  "risks": [
+    {
+      "id": "t1_t2",
+      "horizon": "Korte-termijn risico op diabetes",
+      "label": "Demo-proxy: kans dat HbA1c boven 6,5% uitkomt. Geen diagnose.",
+      "risk_score": 0.27,
+      "risk_label": "medium"
+    },
+    {
+      "id": "t1_t3",
+      "horizon": "Lange-termijn risico op diabetes",
+      "label": "Demo-proxy: kans dat HbA1c boven 6,5% uitkomt. Geen diagnose.",
+      "risk_score": 0.38,
+      "risk_label": "medium"
+    }
+  ],
+  "top_factors": [
+    {
+      "id": "smoking",
+      "label": "Roken",
+      "direction": "increases_risk",
+      "importance": 0.29,
+      "patient_value": "af en toe",
+      "unit": null,
+      "note": "Sam's strongest local mock driver."
+    },
+    {
+      "id": "alcohol",
+      "label": "Alcoholpatroon",
+      "direction": "increases_risk",
+      "importance": 0.21,
+      "patient_value": "meer dan geen",
+      "unit": null,
+      "note": "Local mock contribution — not a trained attribution."
+    },
+    {
+      "id": "cycle_commute",
+      "label": "Fietsen naar werk",
+      "direction": "decreases_risk",
+      "importance": 0.18,
+      "patient_value": "sommige dagen",
+      "unit": null,
+      "note": "Protective local factor unique to Sam."
+    },
+    {
+      "id": "bmi",
+      "label": "BMI",
+      "direction": "increases_risk",
+      "importance": 0.12,
+      "patient_value": "26.1",
+      "unit": "kg/m²",
+      "note": "Milder contribution than River — local, not global."
+    },
+    {
+      "id": "sports",
+      "label": "Sport / beweging",
+      "direction": "decreases_risk",
+      "importance": 0.09,
+      "patient_value": "beweging via woon-werk",
+      "unit": null,
+      "note": "Activity already working in Sam's favour."
+    }
+  ],
+  "interventions": [
+    {
+      "id": "smoke-free-days",
+      "theme": "smoking",
+      "title": "Meer rookvrije dagen",
+      "summary": "Houd de fietsrit en voeg deze week twee volledig rookvrije dagen toe. Geen middelen hier — je zorgteam helpt als je extra steun wilt.",
+      "explanation": "Roken weegt bij jou het zwaarst. We maken geen stopprogramma: twee dagen die je zelf kiest, terwijl de fietsrit blijft staan.",
+      "how": "Kies twee dagen vooruit. Zet de fietsrit vast. Extra steun of hulpmiddelen? Dat hoort bij je zorgteam, niet bij Boris.",
+      "linked_factors": ["smoking"]
+    },
+    {
+      "id": "alcohol-free-evenings",
+      "theme": "alcohol",
+      "title": "Twee avonden zonder alcohol",
+      "summary": "Kies twee doordeweekse avonden zonder alcohol. Vervang het gebruikelijke glas door bruiswater dat je echt lust.",
+      "explanation": "Alcohol is het tweede punt. Geen verbod: twee avonden met iets dat je echt lust, zodat de rest van de week herkenbaar blijft.",
+      "how": "Zet woensdag en donderdag in je agenda. Glas bruiswater al in de koelkast. Weekend mag het oude patroon zijn — eerst de twee avonden.",
+      "linked_factors": ["alcohol"]
+    },
+    {
+      "id": "keep-cycling",
+      "theme": "sport",
+      "title": "Bescherm je fietsrit",
+      "summary": "Je fietsen telt al als plus. Zet drie fietsdagen vast; een regendag wordt een wandeling, dat telt ook.",
+      "explanation": "Fietsen naar werk werkt al voor je. Bescherm wat al werkt in plaats van een nieuw schema te starten.",
+      "how": "Drie fietsdagen in de agenda. Regen? Wandel het eerste stuk. Geen extra sportschool-doel deze week.",
+      "linked_factors": ["cycle_commute", "sports"]
+    }
+  ],
+  "coaching": {
+    "template": "Sam, je hebt al een bewegingsgewoonte die voor je werkt. Roken en alcohol kun je een stukje schuiven. Houd de fiets — dat is te doen."
+  }
+}

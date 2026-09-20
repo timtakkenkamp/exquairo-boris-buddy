@@ -1,0 +1,27 @@
+{
+  "persona_id": "persona-noor",
+  "features": {
+    "AGE_T1": 38.0,
+    "BMI_T1": 23.4,
+    "HIP_T1": 89.0,
+    "WAIST_T1": 83.0,
+    "EDUCATION_LOWER_T1": 1.0,
+    "HBF_T1": 61.0,
+    "MAP_T1": 94.0,
+    "HTN_MED_T1": 0.0,
+    "BKR_T1": 95.0,
+    "CHO_T1": 4.1,
+    "HBAC_T1": 5.3,
+    "HDC_T1": 1.1,
+    "LDC_T1": 2.6,
+    "TGL_T1": 1.27,
+    "RESPIRATORY_DISEASE_T1": 0.0,
+    "SPORTS_T1": 1.0,
+    "DEPRESSION_T1": 0.0
+  },
+  "source_row_hint": {
+    "bmi": 23.4,
+    "age": 38.0,
+    "hbac": 5.3
+  }
+}

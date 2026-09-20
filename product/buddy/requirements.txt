@@ -1,0 +1,7 @@
+streamlit>=1.40
+openai>=1.40
+xgboost>=3.4.1
+scikit-learn>=1.5
+imbalanced-learn>=0.12
+joblib>=1.4
+

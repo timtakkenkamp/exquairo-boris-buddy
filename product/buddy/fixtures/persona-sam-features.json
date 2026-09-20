@@ -1,0 +1,27 @@
+{
+  "persona_id": "persona-sam",
+  "features": {
+    "AGE_T1": 42.0,
+    "BMI_T1": 26.1,
+    "HIP_T1": 102.0,
+    "WAIST_T1": 86.0,
+    "EDUCATION_LOWER_T1": 0.0,
+    "HBF_T1": 84.0,
+    "MAP_T1": 95.0,
+    "HTN_MED_T1": 0.0,
+    "BKR_T1": 62.0,
+    "CHO_T1": 7.4,
+    "HBAC_T1": 5.8,
+    "HDC_T1": 1.9,
+    "LDC_T1": 5.3,
+    "TGL_T1": 1.65,
+    "RESPIRATORY_DISEASE_T1": 0.0,
+    "SPORTS_T1": 0.0,
+    "DEPRESSION_T1": 1.0
+  },
+  "source_row_hint": {
+    "bmi": 26.1,
+    "age": 42.0,
+    "hbac": 5.8
+  }
+}

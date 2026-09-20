@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 132" width="120" height="132" role="img" aria-label="Boris placeholder">
+  <title>Boris (placeholder)</title>
+  <!-- sprout -->
+  <path d="M60 28 C60 18 68 10 78 8 C72 16 70 22 68 28 Z" fill="#6FBF4B"/>
+  <path d="M60 28 C60 16 50 10 40 10 C48 18 52 24 54 30 Z" fill="#7ED957"/>
+  <rect x="57" y="26" width="6" height="16" rx="3" fill="#4C9A2A"/>
+  <!-- head -->
+  <rect x="18" y="40" width="84" height="72" rx="28" fill="#3D8BBF"/>
+  <rect x="26" y="50" width="68" height="40" rx="16" fill="#EAF4FB"/>
+  <circle cx="46" cy="70" r="7" fill="#1A4A6E"/>
+  <circle cx="74" cy="70" r="7" fill="#1A4A6E"/>
+  <circle cx="48" cy="68" r="2" fill="#FFFFFF"/>
+  <circle cx="76" cy="68" r="2" fill="#FFFFFF"/>
+  <path d="M50 86 Q60 94 70 86" stroke="#1A4A6E" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- body hint -->
+  <rect x="38" y="112" width="44" height="16" rx="8" fill="#2F7AAB"/>
+</svg>

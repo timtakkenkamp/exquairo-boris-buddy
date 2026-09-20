@@ -1,0 +1,130 @@
+{
+  "schema_version": "0.2.0",
+  "source": "mock",
+  "generated_at": "2026-09-17T00:00:00Z",
+  "disclaimer": "Demo only. Not a diagnosis, prognosis, or medical advice. Lifestyle coaching — talk to your care provider about medical questions.",
+  "patient": {
+    "persona_id": "persona-river",
+    "display_name": "Pietje",
+    "age": 54,
+    "pronouns": "hij/hem",
+    "tagline": "Klaar voor kleine, vaste stappen.",
+    "story": "Begin 50, hoger gewicht, weinig gerapporteerde sport, moeder met type 2 diabetes, slaap is rommelig.",
+    "height_cm": 174,
+    "weight_kg": 94.5,
+    "bmi": 31.2,
+    "waist_cm": 106,
+    "move_min_week": 30,
+    "sleep_hours": 5.5,
+    "sugary_drinks_week": 7,
+    "snapshot": {
+      "hba1c_t1": "6.2%",
+      "bmi": "31.2",
+      "weight": "94.5 kg",
+      "sports": "none reported",
+      "family_t2dm": "mother",
+      "sleep": "irregular"
+    }
+  },
+  "target": {
+    "id": "hba1c_gt_6_5",
+    "label": "HbA1c above 6.5%",
+    "threshold": ">6.5%",
+    "unit": "%"
+  },
+  "risks": [
+    {
+      "id": "t1_t2",
+      "horizon": "Korte-termijn risico op diabetes",
+      "label": "Demo-proxy: kans dat HbA1c boven 6,5% uitkomt. Geen diagnose.",
+      "risk_score": 0.48,
+      "risk_label": "medium"
+    },
+    {
+      "id": "t1_t3",
+      "horizon": "Lange-termijn risico op diabetes",
+      "label": "Demo-proxy: kans dat HbA1c boven 6,5% uitkomt. Geen diagnose.",
+      "risk_score": 0.67,
+      "risk_label": "high"
+    }
+  ],
+  "top_factors": [
+    {
+      "id": "bmi",
+      "label": "BMI",
+      "direction": "increases_risk",
+      "importance": 0.34,
+      "patient_value": "31.2",
+      "unit": "kg/m²",
+      "note": "Local mock contribution for Pietje — not a trained attribution."
+    },
+    {
+      "id": "sports",
+      "label": "Sport / beweging",
+      "direction": "increases_risk",
+      "importance": 0.24,
+      "patient_value": "niet gerapporteerd",
+      "unit": null,
+      "note": "Low activity treated as risk-raising in this mock."
+    },
+    {
+      "id": "waist",
+      "label": "Tailleomvang",
+      "direction": "increases_risk",
+      "importance": 0.16,
+      "patient_value": "106",
+      "unit": "cm",
+      "note": "Placeholder local factor aligned with later model features."
+    },
+    {
+      "id": "family_t2dm",
+      "label": "Familiegeschiedenis type 2 diabetes",
+      "direction": "increases_risk",
+      "importance": 0.14,
+      "patient_value": "moeder",
+      "unit": null,
+      "note": "Background context; not something Pietje can change."
+    },
+    {
+      "id": "sleep",
+      "label": "Slaap",
+      "direction": "increases_risk",
+      "importance": 0.12,
+      "patient_value": "onregelmatig",
+      "unit": null,
+      "note": "Patchy sleep as a lifestyle lever in this mock."
+    }
+  ],
+  "interventions": [
+    {
+      "id": "activity-walks",
+      "theme": "sport",
+      "title": "Rondje plantsoen, grachten en Martinitoren",
+      "summary": "Deze week het vaste Groninger rondje langs plantsoen, grachten en Martinitoren — dezelfde schoenen, hetzelfde startpunt.",
+      "explanation": "Bij jou wegen BMI en taille het zwaarst. Het vaste Groninger rondje — plantsoen, grachten, Martinitoren — is de stap, geen sportschema en geen woon-werkrit.",
+      "how": "Drie keer deze week: jas aan na het eten, Noorderplantsoen in, 25–45 minuten. Regendag? Alleen het parkrondje telt ook.",
+      "linked_factors": ["sports", "bmi", "waist"]
+    },
+    {
+      "id": "food-pattern",
+      "theme": "food",
+      "title": "Rustige maaltijden, minder suikerdrank",
+      "summary": "Houd je eettijden rustig en wissel één suikerdrankje per dag in voor water of ongezoete thee. Klein, niet streng.",
+      "explanation": "BMI en taille hangen samen met wat je drinkt en hoe gehaast je eet. Geen dieet: één vaste wissel, dezelfde koffieafspraak.",
+      "how": "Kies één moment (middag of na het eten). Zet water of thee al klaar. Zeven dagen hetzelfde moment, dan pas iets nieuws.",
+      "linked_factors": ["bmi", "waist"]
+    },
+    {
+      "id": "sleep-wind-down",
+      "theme": "sleep",
+      "title": "Een rustiger avondritueel",
+      "summary": "Kies een bedtijd en leg de telefoon 30 minuten eerder in een andere kamer. Slaap is geen recept.",
+      "explanation": "Onregelmatige slaap staat bij jou naast gewicht en bewegen. Een vaste bedtijd maakt de dag kleiner, niet perfecter.",
+      "how": "Vijf avonden: telefoon de kamer uit, licht lager, één rustig ding (thee of een boek). Geen slaapbehandeling.",
+      "linked_factors": ["sleep"]
+    }
+  ],
+  "coaching": {
+    "template": "Pietje, gewicht, bewegen en slaap komen bij jou het sterkst naar voren. Begin met wandelingen die je volhoudt, geen perfect plan."
+  }
+}

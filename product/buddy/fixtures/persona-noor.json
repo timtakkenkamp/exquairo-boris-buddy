@@ -1,0 +1,130 @@
+{
+  "schema_version": "0.2.0",
+  "source": "mock",
+  "generated_at": "2026-09-17T00:00:00Z",
+  "disclaimer": "Demo only. Not a diagnosis, prognosis, or medical advice. Lifestyle coaching — talk to your care provider about medical questions.",
+  "patient": {
+    "persona_id": "persona-noor",
+    "display_name": "Noor",
+    "age": 38,
+    "pronouns": "she/her",
+    "tagline": "A maintenance chapter — keep what works.",
+    "story": "Late 30s, active, BMI in a lower range, no family T2DM flags, HbA1c well below the mock threshold.",
+    "height_cm": 168,
+    "weight_kg": 66.0,
+    "bmi": 23.4,
+    "waist_cm": 83,
+    "move_min_week": 180,
+    "sleep_hours": 7.5,
+    "sugary_drinks_week": 2,
+    "snapshot": {
+      "hba1c_t1": "5.3%",
+      "bmi": "23.4",
+      "weight": "66.0 kg",
+      "sports": "regular",
+      "smoking": "no",
+      "sleep": "ok"
+    }
+  },
+  "target": {
+    "id": "hba1c_gt_6_5",
+    "label": "HbA1c above 6.5%",
+    "threshold": ">6.5%",
+    "unit": "%"
+  },
+  "risks": [
+    {
+      "id": "t1_t2",
+      "horizon": "Korte-termijn risico op diabetes",
+      "label": "Demo-proxy: kans dat HbA1c boven 6,5% uitkomt. Geen diagnose.",
+      "risk_score": 0.08,
+      "risk_label": "low"
+    },
+    {
+      "id": "t1_t3",
+      "horizon": "Lange-termijn risico op diabetes",
+      "label": "Demo-proxy: kans dat HbA1c boven 6,5% uitkomt. Geen diagnose.",
+      "risk_score": 0.13,
+      "risk_label": "low"
+    }
+  ],
+  "top_factors": [
+    {
+      "id": "sports",
+      "label": "Sport / beweging",
+      "direction": "decreases_risk",
+      "importance": 0.28,
+      "patient_value": "regelmatig",
+      "unit": null,
+      "note": "Noor's strongest protective local factor."
+    },
+    {
+      "id": "bmi",
+      "label": "BMI",
+      "direction": "decreases_risk",
+      "importance": 0.22,
+      "patient_value": "23.4",
+      "unit": "kg/m²",
+      "note": "Protective in this mock — opposite of River's local picture."
+    },
+    {
+      "id": "sleep",
+      "label": "Slaap",
+      "direction": "decreases_risk",
+      "importance": 0.14,
+      "patient_value": "oké",
+      "unit": null,
+      "note": "Maintenance factor, not a problem to fix."
+    },
+    {
+      "id": "smoking",
+      "label": "Roken",
+      "direction": "decreases_risk",
+      "importance": 0.11,
+      "patient_value": "nee",
+      "unit": null,
+      "note": "Absence of smoking as a protective local signal."
+    },
+    {
+      "id": "kcal",
+      "label": "Energie-inname",
+      "direction": "increases_risk",
+      "importance": 0.07,
+      "patient_value": "soms wat aan de hoge kant",
+      "unit": null,
+      "note": "Smallest local nudge — keep an eye on busy-day snacking."
+    }
+  ],
+  "interventions": [
+    {
+      "id": "keep-training",
+      "theme": "sport",
+      "title": "Houd de training die je al fijn vindt",
+      "summary": "Voeg geen volume toe om het volume. Bescherm twee sessies die je leuk vindt en zet ze in je agenda als vast.",
+      "explanation": "Sport werkt bij jou al. Dit is onderhoud: twee sessies die je al fijn vindt, niet nóg een schema.",
+      "how": "Zet twee bekende trainingen in je agenda als vast. Wordt er één geschrapt, schuif hem diezelfde week — haal die week niet extra in.",
+      "linked_factors": ["sports"]
+    },
+    {
+      "id": "food-maintain",
+      "theme": "food",
+      "title": "Vaste maaltijden op drukke dagen",
+      "summary": "Je patroon oogt in balans. Neem één eenvoudige lunch mee op de twee langste werkdagen, zodat tussendoor knabbelen niet sluipenderwijs toeneemt.",
+      "explanation": "Op drukke dagen sluipt er extra eten in. Geen dieet: lunch meenemen op de twee langste dagen.",
+      "how": "Maandagavond: twee lunches klaarzetten. Dinsdag en donderdag geen snackrun tussen de mails door.",
+      "linked_factors": ["kcal", "bmi"]
+    },
+    {
+      "id": "sleep-keep",
+      "theme": "sleep",
+      "title": "Bescherm de slaap die al goed gaat",
+      "summary": "Houd je avondritueel. Wordt het een late week, pak de volgende nacht dezelfde bedtijd — niet uitslapen tot de middag.",
+      "explanation": "Slaap werkt bij jou al beschermend. Bewaar het ritueel; herstel de volgende nacht in plaats van het weekend om te gooien.",
+      "how": "Zelfde bedtijd vijf nachten. Late donderdag? Vrijdag dezelfde tijd, geen uitslapen tot elf.",
+      "linked_factors": ["sleep"]
+    }
+  ],
+  "coaching": {
+    "template": "Noor, je beweging en gewicht werken al voor je. Houd de routines die je fijn vindt, en houd drukke-dagen-maaltijden een beetje rustig."
+  }
+}

@@ -1,0 +1,21 @@
+[project]
+name = "exquairo-apex-lifelines"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "imbalanced-learn>=0.14.2",
+    "ipykernel>=7.3.0",
+    "joblib>=1.6.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.11.2",
+    "openai>=3.14.1",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.5",
+    "scikit-learn>=1.9.1",
+    "streamlit>=1.64.0",
+    "uvicorn>=0.53.0",
+    "xgboost>=3.4.1",
+]

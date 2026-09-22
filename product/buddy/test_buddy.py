@@ -522,6 +522,10 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn("whatif_reset", app)
         self.assertIn("_keep_whatif_sliders", app)
         self.assertIn("_reseed_whatif_sliders", app)
+        self.assertIn("_WHATIF_PERSIST_STATE", app)
+        self.assertIn('persist_state=_WHATIF_PERSIST_STATE', app)
+        self.assertIn("pending_reseed=True", app)
+        self.assertIn("_whatif_reseed_pending", app)
         self.assertIn("whatif_bri", app)
         self.assertIn("_bri_sentence", app)
         self.assertNotIn("_sync_bri_to_waist", app)
@@ -1060,6 +1064,64 @@ class SystemPromptTests(unittest.TestCase):
         self.assertEqual(back["Slaap (uur per nacht)"], 8.0)
         self.assertEqual(back["Suikerdranken per week"], 14)
         self.assertNotIn("whatif_alcohol", (EXAMPLE_CONTRACT.parent / "app.py").read_text(encoding="utf-8"))
+
+    def test_sliders_reseed_after_stale_key_drop(self):
+        """AppTest keeps unused widget keys; real Streamlit drops them.
+
+        Simulate that drop on the detail view, then return home — levers must
+        restore from _keep_* (persona baseline or last home values), not mins.
+        """
+        from streamlit.testing.v1 import AppTest
+
+        slider_keys = (
+            "whatif_weight",
+            "whatif_move",
+            "whatif_sleep",
+            "whatif_drinks",
+        )
+        demo = AppTest.from_file(str(EXAMPLE_CONTRACT.parent / "app.py"), default_timeout=45)
+        demo.query_params["demo"] = "1"
+        demo.run()
+        self.assertFalse(demo.exception)
+        baseline = {s.label: s.value for s in demo.slider}
+        self.assertEqual(baseline["Gewicht (kg)"], 94.5)
+        self.assertEqual(baseline["Beweegminuten per week"], 30)
+        self.assertEqual(baseline["Slaap (uur per nacht)"], 5.5)
+        self.assertEqual(baseline["Suikerdranken per week"], 7)
+
+        next(b for b in demo.button if "wandeling" in (b.label or "").lower()).click().run()
+        self.assertFalse(demo.exception)
+        self.assertFalse(demo.slider)
+        for key in slider_keys:
+            self.assertIn(f"_keep_{key}", demo.session_state)
+            if key in demo.session_state:
+                del demo.session_state[key]
+        self.assertTrue(demo.session_state.get("_whatif_reseed_pending"))
+
+        next(b for b in demo.button if b.label == "Terug naar de tegels").click().run()
+        self.assertFalse(demo.exception)
+        restored = {s.label: s.value for s in demo.slider}
+        self.assertEqual(restored, baseline)
+        for key in slider_keys:
+            self.assertIn(key, demo.session_state)
+        self.assertFalse(demo.session_state.get("_whatif_reseed_pending"))
+
+    def test_persona_switch_reseeds_baseline_after_tile_roundtrip(self):
+        from streamlit.testing.v1 import AppTest
+
+        demo = AppTest.from_file(str(EXAMPLE_CONTRACT.parent / "app.py"), default_timeout=45)
+        demo.query_params["demo"] = "1"
+        demo.run()
+        self.assertFalse(demo.exception)
+        next(b for b in demo.button if "wandeling" in (b.label or "").lower()).click().run()
+        next(b for b in demo.button if b.label == "Terug naar de tegels").click().run()
+        demo.pills[0].set_value("persona-sam")
+        demo.run()
+        self.assertFalse(demo.exception)
+        sam = {s.label: s.value for s in demo.slider}
+        # Sam fixtures: lighter / more active than Pietje
+        self.assertNotEqual(sam["Gewicht (kg)"], 94.5)
+        self.assertEqual(demo.session_state.get("whatif_persona"), "persona-sam")
 
     def test_zaal_chat_replies_for_every_persona(self):
         from streamlit.testing.v1 import AppTest

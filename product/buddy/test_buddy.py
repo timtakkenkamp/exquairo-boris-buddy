@@ -16,6 +16,7 @@ from buddy_lib import (
     PATIENT_RISK_COPY,
     SESSIE_CONTEXT_TOKEN,
     SYSTEM_PROMPT_FILE,
+    WAIST_CM_PER_KG,
     answer_question,
     apply_lifestyle_overlay,
     apply_weight_whatif,
@@ -389,6 +390,88 @@ class WhatIfTests(unittest.TestCase):
         self.assertLess(over["risks"][0]["risk_score"], seeded["risks"][0]["risk_score"])
         self.assertTrue(over["whatif"]["active"])
         self.assertEqual(over["whatif"]["overlay"], "mock_lifestyle")
+
+    def test_lifestyle_overlay_updates_persona_factors_importance(self):
+        """Live ?demo=1 keeps sleep/move on persona_factors — overlay must update them."""
+        from live_model import models_available, overlay_live_predictions
+
+        if not models_available():
+            self.skipTest("final A/B joblibs not on disk")
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        body = persona_body(river)
+        live = overlay_live_predictions(
+            river, weight_kg=body["weight_kg"], waist_cm=body["waist_cm"]
+        )
+        self.assertTrue(live.get("persona_factors"))
+        base_sleep = next(f for f in live["persona_factors"] if f["id"] == "sleep")
+        base_sports = next(f for f in live["persona_factors"] if f["id"] == "sports")
+        over = apply_lifestyle_overlay(
+            live,
+            river,
+            move_min_week=120,
+            sleep_hours=4.0,
+            sugary_drinks_week=body["sugary_drinks_week"],
+        )
+        sleep = next(f for f in over["persona_factors"] if f["id"] == "sleep")
+        sports = next(f for f in over["persona_factors"] if f["id"] == "sports")
+        self.assertGreater(sleep["importance"], base_sleep["importance"])
+        self.assertLess(sports["importance"], base_sports["importance"])
+        self.assertEqual(sleep["patient_value"], "4.0")
+        self.assertEqual(sports["patient_value"], "120")
+
+    def test_live_overlay_can_flip_ranked_primary_for_pietje(self):
+        """Lower weight + mid move + worse sleep → sleep primary via persona_factors."""
+        from live_model import models_available, overlay_live_predictions
+
+        if not models_available():
+            self.skipTest("final A/B joblibs not on disk")
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        body = persona_body(river)
+        live_rest = overlay_live_predictions(
+            river, weight_kg=body["weight_kg"], waist_cm=body["waist_cm"]
+        )
+        rest = apply_lifestyle_overlay(
+            live_rest,
+            river,
+            move_min_week=body["move_min_week"],
+            sleep_hours=body["sleep_hours"],
+            sugary_drinks_week=body["sugary_drinks_week"],
+        )
+        self.assertEqual(ranked_advice_sets(rest, 1)[0][2], "sport")
+
+        lighter_waist = body["waist_cm"] + WAIST_CM_PER_KG * (72.0 - body["weight_kg"])
+        live_flip = overlay_live_predictions(river, weight_kg=72.0, waist_cm=lighter_waist)
+        flipped = apply_lifestyle_overlay(
+            live_flip,
+            river,
+            move_min_week=120,
+            sleep_hours=4.0,
+            sugary_drinks_week=body["sugary_drinks_week"],
+        )
+        themes = [theme for _g, _c, theme in ranked_advice_sets(flipped, 3)]
+        self.assertEqual(themes[0], "sleep", msg=themes)
+        persona_bmi = next(f for f in flipped["persona_factors"] if f["id"] == "bmi")
+        persona_sleep = next(f for f in flipped["persona_factors"] if f["id"] == "sleep")
+        self.assertLess(persona_bmi["importance"], persona_sleep["importance"])
+
+    def test_weight_whatif_updates_persona_factors_lifestyle(self):
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        with_persona = {
+            **river,
+            "persona_factors": [dict(f) for f in river["top_factors"]],
+        }
+        body = persona_body(river)
+        updated = apply_weight_whatif(
+            with_persona,
+            weight_kg=72.0,
+            sleep_hours=4.0,
+            move_min_week=120,
+            sugary_drinks_week=body["sugary_drinks_week"],
+        )
+        sleep = next(f for f in updated["persona_factors"] if f["id"] == "sleep")
+        base_sleep = next(f for f in river["top_factors"] if f["id"] == "sleep")
+        self.assertGreater(sleep["importance"], base_sleep["importance"])
+        self.assertEqual(ranked_advice_sets(updated, 1)[0][2], "sleep")
 
 
 class InterventionPageTests(unittest.TestCase):

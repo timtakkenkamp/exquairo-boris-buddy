@@ -742,8 +742,11 @@ def _apply_lifestyle_factors(
                 clip(base_imp + sign * SPORTS_FACTOR_COEF * d_move, 0.04, 0.55), 4
             )
             if fid == "sports":
-                factor["patient_value"] = f"{move_min_week:.0f}"
-                factor["unit"] = "min/week"
+                # Keep Sam-style commute narrative for chips; still update importance.
+                existing = str(factor.get("patient_value") or "")
+                if "woon-werk" not in existing.lower():
+                    factor["patient_value"] = f"{move_min_week:.0f}"
+                    factor["unit"] = "min/week"
             factor["note"] = "Mock what-if contribution — not a trained attribution."
         elif fid == "sleep":
             if sleep_hours >= SLEEP_PROTECT_HOURS:
@@ -765,6 +768,78 @@ def _apply_lifestyle_factors(
                 clip(base_imp + KCAL_DRINK_FACTOR_COEF * d_drinks, 0.04, 0.40), 4
             )
             factor["note"] = "Mock what-if contribution — not a trained attribution."
+
+
+def _apply_weight_linked_factors(
+    factors: list[dict[str, Any]],
+    body: dict[str, float],
+    *,
+    new_weight: float,
+    new_bmi: float,
+    new_waist: float,
+) -> None:
+    """Update BMI / weight / waist importance on a factor list (top or persona)."""
+    delta_bmi = new_bmi - body["bmi"]
+    for factor in factors:
+        fid = factor.get("id")
+        if fid not in WEIGHT_LINKED_FACTORS:
+            continue
+        base_imp = float(factor.get("importance") or 0)
+        if fid in {"bmi", "weight"}:
+            factor["importance"] = round(clip(base_imp + BMI_FACTOR_COEF * delta_bmi, 0.04, 0.70), 4)
+            factor["direction"] = (
+                "increases_risk" if new_bmi >= BMI_DIRECTION_PIVOT else "decreases_risk"
+            )
+            if fid == "bmi":
+                factor["patient_value"] = f"{new_bmi:.1f}"
+                factor["unit"] = "kg/m²"
+            else:
+                factor["patient_value"] = f"{new_weight:.1f}"
+                factor["unit"] = "kg"
+            factor["note"] = "Mock what-if contribution — not a trained attribution."
+        elif fid == "waist":
+            d_waist = new_waist - body["waist_cm"]
+            factor["importance"] = round(clip(base_imp + WAIST_FACTOR_COEF * d_waist, 0.04, 0.50), 4)
+            factor["direction"] = (
+                "increases_risk" if new_waist >= WAIST_PIVOT_CM else "decreases_risk"
+            )
+            factor["patient_value"] = f"{new_waist:.0f}"
+            factor["unit"] = "cm"
+            factor["note"] = (
+                "Mock what-if: taille is bewerkbaar; volgt anders 0,7 cm per kg."
+            )
+
+
+def _apply_whatif_factor_lists(
+    updated: dict[str, Any],
+    body: dict[str, float],
+    *,
+    new_weight: float,
+    new_bmi: float,
+    new_waist: float,
+    move_min_week: float,
+    sleep_hours: float,
+    sugary_drinks_week: float,
+    weight_linked: bool = True,
+) -> None:
+    """Apply what-if importance updates to both top_factors and persona_factors."""
+    for key in ("top_factors", "persona_factors"):
+        factors = updated.get(key) or []
+        if weight_linked:
+            _apply_weight_linked_factors(
+                factors,
+                body,
+                new_weight=new_weight,
+                new_bmi=new_bmi,
+                new_waist=new_waist,
+            )
+        _apply_lifestyle_factors(
+            factors,
+            body,
+            move_min_week=move_min_week,
+            sleep_hours=sleep_hours,
+            sugary_drinks_week=sugary_drinks_week,
+        )
 
 
 def _whatif_is_active(
@@ -870,41 +945,16 @@ def apply_weight_whatif(
         risk["horizon"] = copy_bits.get("title", risk.get("horizon"))
         risk["label"] = copy_bits.get("subtitle", risk.get("label"))
 
-    for factor in updated.get("top_factors") or []:
-        fid = factor.get("id")
-        if fid not in WEIGHT_LINKED_FACTORS:
-            continue
-        base_imp = float(factor.get("importance") or 0)
-        if fid in {"bmi", "weight"}:
-            factor["importance"] = round(clip(base_imp + BMI_FACTOR_COEF * delta_bmi, 0.04, 0.70), 4)
-            factor["direction"] = (
-                "increases_risk" if new_bmi >= BMI_DIRECTION_PIVOT else "decreases_risk"
-            )
-            if fid == "bmi":
-                factor["patient_value"] = f"{new_bmi:.1f}"
-                factor["unit"] = "kg/m²"
-            else:
-                factor["patient_value"] = f"{new_weight:.1f}"
-                factor["unit"] = "kg"
-            factor["note"] = "Mock what-if contribution — not a trained attribution."
-        elif fid == "waist":
-            d_waist = new_waist - body["waist_cm"]
-            factor["importance"] = round(clip(base_imp + WAIST_FACTOR_COEF * d_waist, 0.04, 0.50), 4)
-            factor["direction"] = (
-                "increases_risk" if new_waist >= WAIST_PIVOT_CM else "decreases_risk"
-            )
-            factor["patient_value"] = f"{new_waist:.0f}"
-            factor["unit"] = "cm"
-            factor["note"] = (
-                "Mock what-if: taille is bewerkbaar; volgt anders 0,7 cm per kg."
-            )
-
-    _apply_lifestyle_factors(
-        updated.get("top_factors") or [],
+    _apply_whatif_factor_lists(
+        updated,
         body,
+        new_weight=new_weight,
+        new_bmi=new_bmi,
+        new_waist=new_waist,
         move_min_week=new_move,
         sleep_hours=new_sleep,
         sugary_drinks_week=new_drinks,
+        weight_linked=True,
     )
 
     patient = updated.setdefault("patient", {})
@@ -980,14 +1030,29 @@ def apply_lifestyle_overlay(
         score = clip(float(risk.get("risk_score") or 0) + add, lo, hi)
         risk["risk_score"] = round(score, 4)
         risk["risk_label"] = risk_band(score)
-    _apply_lifestyle_factors(
-        updated.get("top_factors") or [],
-        body,
-        move_min_week=new_move,
-        sleep_hours=new_sleep,
-        sugary_drinks_week=new_drinks,
-    )
+    # Live path: labs sit on top_factors; influenceable sleep/move/BMI sit on persona_factors.
+    # Always update both lists for lifestyle levers so ranked_advice_sets can flip.
+    for key in ("top_factors", "persona_factors"):
+        _apply_lifestyle_factors(
+            updated.get(key) or [],
+            body,
+            move_min_week=new_move,
+            sleep_hours=new_sleep,
+            sugary_drinks_week=new_drinks,
+        )
     whatif = updated.setdefault("whatif", {})
+    # Sync BMI/waist importance on the persona card from live anthropometrics (not labs).
+    new_weight = float(whatif.get("weight_kg") or body["weight_kg"])
+    new_bmi = float(whatif.get("bmi") or body["bmi"])
+    waist_raw = whatif.get("waist_cm")
+    new_waist = float(waist_raw if waist_raw is not None else body["waist_cm"])
+    _apply_weight_linked_factors(
+        updated.get("persona_factors") or [],
+        body,
+        new_weight=new_weight,
+        new_bmi=new_bmi,
+        new_waist=new_waist,
+    )
     whatif["move_min_week"] = round(new_move, 0)
     whatif["sleep_hours"] = round(new_sleep, 1)
     whatif["sugary_drinks_week"] = round(new_drinks, 0)

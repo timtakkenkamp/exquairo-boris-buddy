@@ -470,15 +470,16 @@ def advice_why(theme: str, factors: list[dict[str, Any]]) -> str:
     return "Een rustiger avond met een vast ritueel."
 
 
-def advice_sets(
-    payload: dict[str, Any], limit: int = 3
-) -> list[tuple[list[dict[str, Any]], dict[str, Any], str]]:
-    """Voor jou: related factors grouped under one action tile.
+def _advice_group_rows(
+    payload: dict[str, Any],
+) -> list[tuple[list[dict[str, Any]], dict[str, Any], str, float]]:
+    """Build advice groups in ADVICE_GROUPS order with group strength.
 
-    Skip a group when this persona has no factor in it. Do not invent factors.
+    Each row is `(chip_factors, card, theme, max_importance)`. Skip groups with
+    no influenceable factors or no matching intervention card.
     """
     by_id = {str(factor.get("id") or ""): factor for factor in visible_influenceable_factors(payload)}
-    sets: list[tuple[list[dict[str, Any]], dict[str, Any], str]] = []
+    rows: list[tuple[list[dict[str, Any]], dict[str, Any], str, float]] = []
     for theme, ids, preferred in ADVICE_GROUPS:
         group = [by_id[fid] for fid in ids if fid in by_id]
         if not group:
@@ -487,10 +488,38 @@ def advice_sets(
         card = _intervention_for_theme(payload, theme, preferred)
         if not card:
             continue
-        sets.append((factors_for_advice_card(card, group), card, theme))
-        if len(sets) >= limit:
-            break
-    return sets
+        strength = max(float(factor.get("importance") or 0) for factor in group)
+        rows.append((factors_for_advice_card(card, group), card, theme, strength))
+    return rows
+
+
+def advice_sets(
+    payload: dict[str, Any], limit: int = 3
+) -> list[tuple[list[dict[str, Any]], dict[str, Any], str]]:
+    """Voor jou: related factors grouped under one action tile.
+
+    Fixed theme order (sport → food → sleep). Skip a group when this persona
+    has no factor in it. Do not invent factors. Prefer ``ranked_advice_sets``
+    when the homepage needs importance-based primary/secondary order.
+    """
+    return [(factors, card, theme) for factors, card, theme, _strength in _advice_group_rows(payload)[:limit]]
+
+
+def ranked_advice_sets(
+    payload: dict[str, Any], limit: int = 3
+) -> list[tuple[list[dict[str, Any]], dict[str, Any], str]]:
+    """Same groups as ``advice_sets``, ordered by group strength for the homepage.
+
+    Rank by ``max(importance)`` of factors in each group (highest first).
+    Tie-break: fixed theme order sport → food → sleep. Compatible with
+    ``render_advice_tile`` callers — primary = ``[0]``, secondaries = ``[1:]``.
+    """
+    theme_order = {theme: index for index, (theme, _ids, _preferred) in enumerate(ADVICE_GROUPS)}
+    ranked = sorted(
+        _advice_group_rows(payload),
+        key=lambda row: (-row[3], theme_order.get(row[2], 99)),
+    )
+    return [(factors, card, theme) for factors, card, theme, _strength in ranked[:limit]]
 
 
 def factor_action_pairs(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import unittest
 import unittest.mock
 
@@ -34,6 +35,7 @@ from buddy_lib import (
     factors_for_advice_card,
     patient_can_influence,
     pick_primary_intervention,
+    ranked_advice_sets,
     render_system_prompt,
     resolve_openai_api_key,
     top_local_factors,
@@ -189,6 +191,96 @@ class FixtureTests(unittest.TestCase):
         self.assertNotEqual(sam_top, noor_top)
         self.assertEqual(by_id["persona-river"]["risks"][1]["risk_label"], "high")
         self.assertEqual(by_id["persona-noor"]["risks"][0]["risk_label"], "low")
+
+
+class RankedAdviceSetsTests(unittest.TestCase):
+    """Homepage primary tile: rank advice groups by max factor importance."""
+
+    @staticmethod
+    def _with_importance(payload: dict, overrides: dict[str, float]) -> dict:
+        """Deep-copy payload and set importance on matching top_factors by id."""
+        out = copy.deepcopy(payload)
+        for factor in out.get("top_factors") or []:
+            fid = str(factor.get("id") or "")
+            if fid in overrides:
+                factor["importance"] = overrides[fid]
+        return out
+
+    def test_advice_sets_keeps_fixed_theme_order(self):
+        """Backward compatible: advice_sets stays sport → food → sleep, not ranked."""
+        noor = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-noor")
+        # Sleep higher than sport/food — fixed order must still put sport first.
+        boosted = self._with_importance(noor, {"sleep": 0.95, "sports": 0.1, "bmi": 0.1, "kcal": 0.1})
+        self.assertEqual(
+            [theme for _group, _card, theme in advice_sets(boosted, 3)],
+            ["sport", "food", "sleep"],
+        )
+
+    def test_high_sleep_importance_ranks_sleep_first(self):
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        # Pietje has sport + sleep only (no food factor). Sleep wins when strongest.
+        high_sleep = self._with_importance(
+            river,
+            {"sleep": 0.9, "bmi": 0.1, "sports": 0.1, "waist": 0.1},
+        )
+        themes = [theme for _group, _card, theme in ranked_advice_sets(high_sleep, 3)]
+        self.assertEqual(themes[0], "sleep")
+        self.assertIn("sport", themes)
+        self.assertEqual(themes, ["sleep", "sport"])
+
+    def test_raising_sport_importance_can_make_sport_primary(self):
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        sleep_first = self._with_importance(
+            river,
+            {"sleep": 0.9, "bmi": 0.1, "sports": 0.1, "waist": 0.1},
+        )
+        self.assertEqual(ranked_advice_sets(sleep_first, 1)[0][2], "sleep")
+        sport_first = self._with_importance(
+            river,
+            {"sleep": 0.2, "bmi": 0.85, "sports": 0.4, "waist": 0.3},
+        )
+        self.assertEqual(ranked_advice_sets(sport_first, 1)[0][2], "sport")
+
+    def test_tie_break_uses_sport_food_sleep_order(self):
+        noor = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-noor")
+        tied = self._with_importance(
+            noor,
+            {"sports": 0.5, "bmi": 0.5, "kcal": 0.5, "sleep": 0.5},
+        )
+        themes = [theme for _group, _card, theme in ranked_advice_sets(tied, 3)]
+        self.assertEqual(themes, ["sport", "food", "sleep"])
+
+    def test_ranked_sets_compatible_tuple_shape_and_limit(self):
+        noor = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-noor")
+        rows = ranked_advice_sets(noor, limit=2)
+        self.assertLessEqual(len(rows), 2)
+        for factors, card, theme in rows:
+            self.assertIsInstance(factors, list)
+            self.assertIsInstance(card, dict)
+            self.assertIn(theme, {"sport", "food", "sleep"})
+            self.assertIn("id", card)
+            self.assertTrue(factors)
+
+    def test_whatif_sleep_slider_can_reorder_primary(self):
+        """Worse sleep via lifestyle overlay raises sleep importance → sleep primary."""
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        body = persona_body(river)
+        # Sport slightly ahead; mock sleep delta (~+0.05 for −1.5h) must flip primary.
+        base = self._with_importance(
+            river,
+            {"bmi": 0.26, "sports": 0.18, "waist": 0.12, "sleep": 0.24},
+        )
+        self.assertEqual(ranked_advice_sets(base, 1)[0][2], "sport")
+        worse_sleep = apply_weight_whatif(
+            base,
+            weight_kg=body["weight_kg"],
+            waist_cm=body["waist_cm"],
+            move_min_week=body["move_min_week"],
+            sleep_hours=4.0,
+            sugary_drinks_week=body["sugary_drinks_week"],
+        )
+        themes = [theme for _group, _card, theme in ranked_advice_sets(worse_sleep, 3)]
+        self.assertEqual(themes[0], "sleep")
 
 
 class WhatIfTests(unittest.TestCase):

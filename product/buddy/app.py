@@ -22,6 +22,7 @@ from buddy_lib import (
     xai_key_configured,
     pct,
     persona_body,
+    personalized_tile_copy,
     ranked_advice_sets,
     factors_for_advice_card,
     patient_can_influence,
@@ -221,12 +222,32 @@ def _tile_cta(item: dict, theme: str) -> str:
 
 
 def render_advice_tile(
-    factors: list[dict], item: dict, theme: str, *, primary: bool = False
+    factors: list[dict],
+    item: dict,
+    theme: str,
+    *,
+    primary: bool = False,
+    payload: dict | None = None,
+    api_key: str | None = None,
 ) -> None:
-    """One column card: theme, action, chips, one sentence, attached CTA."""
+    """One column card: theme, action, chips, one sentence, attached CTA.
+
+    Title/sentence/(cta) may be Grok-personalized when a key is present;
+    ranking and chip stack stay local.
+    """
     meta = THEME_META.get(theme, {"label": "Stap"})
     colors = THEME_COLORS.get(theme, THEME_COLORS["sport"])
-    blurb = item.get("summary") or item.get("explanation") or ""
+    if "tile_copy_cache" not in st.session_state:
+        st.session_state.tile_copy_cache = {}
+    copy, _source = personalized_tile_copy(
+        payload or {},
+        item,
+        theme,
+        api_key=api_key,
+        cache=st.session_state.tile_copy_cache,
+    )
+    title = copy.get("title") or item.get("title") or ""
+    blurb = copy.get("sentence") or item.get("summary") or item.get("explanation") or ""
     chips = []
     for factor in factors_for_advice_card(item, factors):
         label = factor_display_label(factor)
@@ -239,7 +260,7 @@ def render_advice_tile(
         f"""
 <div class="buddy-tile{primary_class}" style="--buddy-tile-bar:{colors["bar"]};--buddy-tile-ink:{colors["ink"]};">
   <div class="buddy-tile-kicker">{meta["label"]}</div>
-  <div class="buddy-tile-title">{item["title"]}</div>
+  <div class="buddy-tile-title">{title}</div>
   {chips_html}
   <div class="buddy-tile-blurb">{blurb}</div>
   <div class="buddy-tile-spacer" aria-hidden="true"></div>
@@ -247,7 +268,7 @@ def render_advice_tile(
 """,
         unsafe_allow_html=True,
     )
-    cta = _tile_cta(item, theme)
+    cta = copy.get("cta") or _tile_cta(item, theme)
     if st.button(
         cta,
         key=f"open_{item.get('id', theme)}",
@@ -646,7 +667,14 @@ if sets:
     primary_factors, primary_item, primary_theme = sets[0]
     st.markdown('<div class="buddy-voorjou-label">Start hier</div>', unsafe_allow_html=True)
     st.markdown('<div class="buddy-tile-primary">', unsafe_allow_html=True)
-    render_advice_tile(primary_factors, primary_item, primary_theme, primary=True)
+    render_advice_tile(
+        primary_factors,
+        primary_item,
+        primary_theme,
+        primary=True,
+        payload=payload,
+        api_key=xai_key,
+    )
     st.markdown("</div>", unsafe_allow_html=True)
     secondaries = sets[1:3]
     if secondaries:
@@ -654,7 +682,13 @@ if sets:
         row = st.columns(len(secondaries))
         for col, (factors, item, theme) in zip(row, secondaries):
             with col:
-                render_advice_tile(factors, item, theme)
+                render_advice_tile(
+                    factors,
+                    item,
+                    theme,
+                    payload=payload,
+                    api_key=xai_key,
+                )
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="buddy-chat-section">', unsafe_allow_html=True)

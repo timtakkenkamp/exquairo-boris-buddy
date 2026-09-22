@@ -1239,3 +1239,227 @@ def answer_question(
     if source == "xai" and _looks_like_medical_advice(reply):
         return DEFLECT_MESSAGE, "guardrail-post"
     return reply, source
+
+
+# --- Voor jou tile copy (Grok overlay; ranking stays local) ---
+
+GRONINGEN_PLACE_NEEDLES = (
+    "noorderplantsoen",
+    "reitdiep",
+    "paterswoldsemeer",
+    "martinitoren",
+    "groningen",
+    "haren",
+    "forum",
+    "grote markt",
+    "noorderhaven",
+    "stadspark",
+    "hortus",
+    "kardinge",
+    "diepenring",
+    "centrum",
+    "paddepoel",
+    "helpman",
+    "vismarkt",
+    "boteringestraat",
+    "nieuwe ebbingestraat",
+    "gracht",
+    "plantsoen",
+)
+
+# Real places / routes in or around the city — used for prompts + validation.
+GRONINGEN_PLACES_HINT = (
+    "Noorderplantsoen, Reitdiep, Paterswoldsemeer, Centrum, Haren, "
+    "Martinitoren, Forum Groningen, Grote Markt, Noorderhaven, Stadspark, "
+    "Hortus, Kardinge, Diepenring, Paddepoel, Helpman, Vismarkt"
+)
+
+TILE_COPY_SYSTEM_PROMPT = f"""Je schrijft Nederlandse tegelteksten voor Boris, een elektronische leefstijl-buddy.
+Dit is coaching in een demo-app — geen arts, geen diagnose, geen medicatie.
+
+Regels:
+- Altijd Nederlands. Creatief, speels, leuk om te dóén — niet droog of medisch.
+- Elke tip koppelt aan een echte plek of route in Groningen of omgeving: {GRONINGEN_PLACES_HINT}.
+- Wandelen/fietsen: altijd in of rond Groningen, nooit generiek (“ga wandelen in het park”).
+- Geen voorschriften, doseringen, diagnoses, labuitslagen of spoedadvies.
+- title: kort (max ~70 tekens), concreet, met plek of sfeer.
+- sentence: één zin (max ~160 tekens), fun coaching, noemt een echte Groninger plek.
+- cta: optionele korte knoptekst (max ~40 tekens); weglaten mag.
+- Geen emoji, geen opsommingen, geen Engelse producttaal.
+
+Antwoord ALLEEN met JSON-object:
+{{"title":"...","sentence":"...","cta":"..."}}
+cta mag ontbreken. Geen markdown, geen uitleg buiten JSON.
+"""
+
+
+def fixture_tile_copy(item: dict[str, Any], theme: str = "") -> dict[str, str]:
+    """Library / fixture title + sentence (no CTA — UI keeps its own button map)."""
+    title = str(item.get("title") or THEME_META.get(theme, {}).get("label") or "Stap").strip()
+    sentence = str(item.get("summary") or item.get("explanation") or "").strip()
+    return {"title": title, "sentence": sentence}
+
+
+def tile_copy_fingerprint(
+    payload: dict[str, Any],
+    theme: str,
+    item: dict[str, Any],
+) -> str:
+    """Session cache key: persona + theme + card + what-if levers."""
+    patient = payload.get("patient") or {}
+    whatif = payload.get("whatif") or {}
+    body = persona_body(payload) if patient else {}
+    persona_id = str(patient.get("persona_id") or "")
+    item_id = str(item.get("id") or theme or "")
+    weight = whatif.get("weight_kg", patient.get("weight_kg", body.get("weight_kg")))
+    waist = whatif.get("waist_cm", patient.get("waist_cm", body.get("waist_cm")))
+    move = whatif.get("move_min_week", patient.get("move_min_week", body.get("move_min_week")))
+    sleep = whatif.get("sleep_hours", patient.get("sleep_hours", body.get("sleep_hours")))
+    drinks = whatif.get(
+        "sugary_drinks_week",
+        patient.get("sugary_drinks_week", body.get("sugary_drinks_week")),
+    )
+    parts = (
+        persona_id,
+        str(theme),
+        item_id,
+        f"{float(weight):.1f}" if weight is not None else "-",
+        f"{float(waist):.0f}" if waist is not None else "-",
+        f"{float(move):.0f}" if move is not None else "-",
+        f"{float(sleep):.1f}" if sleep is not None else "-",
+        f"{float(drinks):.0f}" if drinks is not None else "-",
+    )
+    return "|".join(parts)
+
+
+def _mentions_groningen_place(text: str) -> bool:
+    blob = (text or "").lower()
+    return any(needle in blob for needle in GRONINGEN_PLACE_NEEDLES)
+
+
+def _parse_tile_copy_json(raw: str) -> dict[str, str] | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if not match:
+            return None
+        try:
+            data = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(data, dict):
+        return None
+    title = str(data.get("title") or "").strip()
+    sentence = str(data.get("sentence") or data.get("summary") or "").strip()
+    if not title or not sentence:
+        return None
+    if len(title) > 90 or len(sentence) > 220:
+        return None
+    out: dict[str, str] = {"title": title, "sentence": sentence}
+    cta = str(data.get("cta") or "").strip()
+    if cta and len(cta) <= 48:
+        out["cta"] = cta
+    return out
+
+
+def _tile_copy_user_prompt(
+    payload: dict[str, Any],
+    item: dict[str, Any],
+    theme: str,
+) -> str:
+    patient = payload.get("patient") or {}
+    name = patient.get("display_name") or "deze persoon"
+    persona_id = patient.get("persona_id") or ""
+    meta = THEME_META.get(theme, {"label": theme})
+    fixture = fixture_tile_copy(item, theme)
+    context = build_session_context(payload)
+    return "\n".join(
+        [
+            f"Schrijf tegelcopy voor {name} ({persona_id}), thema {meta.get('label')} ({theme}).",
+            f"Fixture-titel (ter inspiratie): {fixture['title']}",
+            f"Fixture-zin (ter inspiratie): {fixture['sentence']}",
+            f"Kaart-id: {item.get('id') or ''}",
+            "Huidige sessie:",
+            context,
+            "Maak title + sentence persoonlijk op basis van persona en what-if. "
+            "Noem minstens één echte Groninger plek. JSON alleen.",
+        ]
+    )
+
+
+def _validate_tile_copy(copy: dict[str, str]) -> bool:
+    blob = f"{copy.get('title', '')} {copy.get('sentence', '')}"
+    if _looks_like_medical_advice(blob):
+        return False
+    if not _mentions_groningen_place(blob):
+        return False
+    return True
+
+
+def personalized_tile_copy(
+    payload: dict[str, Any],
+    item: dict[str, Any],
+    theme: str,
+    *,
+    api_key: str | None = None,
+    cache: dict[str, dict[str, str]] | None = None,
+) -> tuple[dict[str, str], str]:
+    """Overlay Grok Dutch title/sentence/(cta) for one Voor-jou tile.
+
+    Ranking stays with ``ranked_advice_sets``. Missing key or API/validation
+    failure → fixture library copy. Optional ``cache`` is keyed by
+    ``tile_copy_fingerprint`` for the session.
+    """
+    fallback = fixture_tile_copy(item, theme)
+    key = tile_copy_fingerprint(payload, theme, item)
+    if cache is not None and key in cache:
+        cached = cache[key]
+        return dict(cached), "cache"
+
+    xai_key = resolve_xai_api_key(api_key)
+    if not xai_key:
+        if cache is not None:
+            cache[key] = dict(fallback)
+        return dict(fallback), "fixture"
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        if cache is not None:
+            cache[key] = dict(fallback)
+        return dict(fallback), "fixture"
+
+    messages = [
+        {"role": "system", "content": TILE_COPY_SYSTEM_PROMPT},
+        {"role": "user", "content": _tile_copy_user_prompt(payload, item, theme)},
+    ]
+    try:
+        client = OpenAI(api_key=xai_key, base_url=XAI_BASE_URL, timeout=12.0)
+        response = client.chat.completions.create(
+            model=os.environ.get("XAI_MODEL", XAI_MODEL),
+            temperature=0.7,
+            messages=messages,
+        )
+        raw = ((response.choices[0].message.content) or "").strip()
+    except Exception:
+        if cache is not None:
+            cache[key] = dict(fallback)
+        return dict(fallback), "fixture"
+
+    parsed = _parse_tile_copy_json(raw)
+    if not parsed or not _validate_tile_copy(parsed):
+        if cache is not None:
+            cache[key] = dict(fallback)
+        return dict(fallback), "fixture"
+
+    if cache is not None:
+        cache[key] = dict(parsed)
+    return dict(parsed), "xai"
+

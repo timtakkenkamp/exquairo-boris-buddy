@@ -16,6 +16,7 @@ from buddy_lib import (
     PATIENT_RISK_COPY,
     SESSIE_CONTEXT_TOKEN,
     SYSTEM_PROMPT_FILE,
+    TILE_COPY_SYSTEM_PROMPT,
     XAI_BASE_URL,
     XAI_MODEL,
     answer_question,
@@ -24,12 +25,14 @@ from buddy_lib import (
     build_session_context,
     factor_direction_nl,
     factor_display_label,
+    fixture_tile_copy,
     is_medical_or_triage,
     load_default_system_prompt,
     load_payload,
     load_personas,
     optional_llm_reply,
     persona_body,
+    personalized_tile_copy,
     interventions_for_local_factors,
     advice_sets,
     advice_why,
@@ -40,6 +43,7 @@ from buddy_lib import (
     ranked_advice_sets,
     render_system_prompt,
     resolve_xai_api_key,
+    tile_copy_fingerprint,
     top_local_factors,
     validate_payload,
 )
@@ -843,6 +847,176 @@ class XAIHookTests(unittest.TestCase):
             )
         self.assertEqual(source, "xai-error")
         self.assertEqual(text, CHAT_RUNTIME_ERROR_MESSAGE)
+
+
+class PersonalizedTileCopyTests(unittest.TestCase):
+    def _river_sport(self):
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        factors, item, theme = ranked_advice_sets(river, limit=1)[0]
+        return river, factors, item, theme
+
+    def test_fixture_fallback_without_key(self):
+        river, _factors, item, theme = self._river_sport()
+        copy, source = personalized_tile_copy(river, item, theme, api_key="")
+        expected = fixture_tile_copy(item, theme)
+        self.assertEqual(source, "fixture")
+        self.assertEqual(copy["title"], expected["title"])
+        self.assertEqual(copy["sentence"], expected["sentence"])
+        self.assertNotIn("cta", copy)
+
+    def test_api_failure_falls_back_to_fixture(self):
+        river, _factors, item, theme = self._river_sport()
+
+        class _Client:
+            def __init__(self, **kwargs):
+                raise RuntimeError("timeout")
+
+        with unittest.mock.patch("openai.OpenAI", _Client):
+            copy, source = personalized_tile_copy(river, item, theme, api_key="xai-bad")
+        self.assertEqual(source, "fixture")
+        self.assertEqual(copy["title"], item["title"])
+
+    def test_mocked_grok_returns_personalized_dutch_copy(self):
+        river, _factors, item, theme = self._river_sport()
+        payload_json = (
+            '{"title":"Reitdiep-rondje na het eten",'
+            '"sentence":"Pietje, trek je jas aan en loop langs het Reitdiep — twintig minuten is genoeg.",'
+            '"cta":"Open het Reitdiep-rondje"}'
+        )
+
+        class _Msg:
+            content = payload_json
+
+        class _Choice:
+            message = _Msg()
+
+        class _Resp:
+            choices = [_Choice()]
+
+        class _Completions:
+            kwargs = None
+
+            def create(self, **kwargs):
+                _Completions.kwargs = kwargs
+                return _Resp()
+
+        class _Chat:
+            completions = _Completions()
+
+        class _Client:
+            last_kwargs = None
+
+            def __init__(self, **kwargs):
+                _Client.last_kwargs = kwargs
+                self.chat = _Chat()
+
+        cache: dict = {}
+        with unittest.mock.patch("openai.OpenAI", _Client):
+            copy, source = personalized_tile_copy(
+                river, item, theme, api_key="xai-test", cache=cache
+            )
+        self.assertEqual(source, "xai")
+        self.assertIn("Reitdiep", copy["title"])
+        self.assertIn("Reitdiep", copy["sentence"])
+        self.assertEqual(copy.get("cta"), "Open het Reitdiep-rondje")
+        self.assertEqual(_Client.last_kwargs["base_url"], XAI_BASE_URL)
+        self.assertEqual(_Completions.kwargs["model"], XAI_MODEL)
+        system = _Completions.kwargs["messages"][0]["content"]
+        self.assertIn("Groningen", system)
+        self.assertIn("Noorderplantsoen", TILE_COPY_SYSTEM_PROMPT)
+        self.assertIn("geen diagnose", system.lower())
+        # Second call hits session cache — no new OpenAI client.
+        with unittest.mock.patch("openai.OpenAI", side_effect=AssertionError("cache miss")):
+            again, source2 = personalized_tile_copy(
+                river, item, theme, api_key="xai-test", cache=cache
+            )
+        self.assertEqual(source2, "cache")
+        self.assertEqual(again, copy)
+
+    def test_medical_or_generic_copy_rejected(self):
+        river, _factors, item, theme = self._river_sport()
+
+        class _Msg:
+            content = (
+                '{"title":"Start metformine vandaag",'
+                '"sentence":"Neem 500 mg metformine na het ontbijt in het park."}'
+            )
+
+        class _Choice:
+            message = _Msg()
+
+        class _Resp:
+            choices = [_Choice()]
+
+        class _Completions:
+            def create(self, **kwargs):
+                return _Resp()
+
+        class _Chat:
+            completions = _Completions()
+
+        class _Client:
+            def __init__(self, **kwargs):
+                self.chat = _Chat()
+
+        with unittest.mock.patch("openai.OpenAI", _Client):
+            copy, source = personalized_tile_copy(river, item, theme, api_key="xai-test")
+        self.assertEqual(source, "fixture")
+        self.assertEqual(copy["title"], item["title"])
+
+    def test_generic_walk_without_groningen_place_rejected(self):
+        river, _factors, item, theme = self._river_sport()
+
+        class _Msg:
+            content = (
+                '{"title":"Lekker een rondje lopen",'
+                '"sentence":"Ga gewoon twintig minuten wandelen in het park bij jou."}'
+            )
+
+        class _Choice:
+            message = _Msg()
+
+        class _Resp:
+            choices = [_Choice()]
+
+        class _Completions:
+            def create(self, **kwargs):
+                return _Resp()
+
+        class _Chat:
+            completions = _Completions()
+
+        class _Client:
+            def __init__(self, **kwargs):
+                self.chat = _Chat()
+
+        with unittest.mock.patch("openai.OpenAI", _Client):
+            copy, source = personalized_tile_copy(river, item, theme, api_key="xai-test")
+        self.assertEqual(source, "fixture")
+        self.assertEqual(copy["title"], item["title"])
+
+    def test_fingerprint_changes_with_whatif_levers(self):
+        river, _factors, item, theme = self._river_sport()
+        base_key = tile_copy_fingerprint(river, theme, item)
+        heavier = apply_weight_whatif(river, weight_kg=100.0)
+        heavy_key = tile_copy_fingerprint(heavier, theme, item)
+        self.assertNotEqual(base_key, heavy_key)
+        self.assertIn("persona-river", base_key)
+        self.assertIn(theme, base_key)
+
+    def test_app_wires_personalized_tile_copy(self):
+        app = (EXAMPLE_CONTRACT.parent / "app.py").read_text(encoding="utf-8")
+        self.assertIn("personalized_tile_copy", app)
+        self.assertIn("tile_copy_cache", app)
+        tile_fn = app.split("def render_advice_tile", 1)[1].split("def _advice_chips", 1)[0]
+        self.assertIn("buddy-tile-title", tile_fn)
+        self.assertIn("{title}", tile_fn)
+        self.assertIn("{blurb}", tile_fn)
+        self.assertLess(tile_fn.find("buddy-tile-title"), tile_fn.find("{chips_html}"))
+        self.assertIn("payload=payload", app)
+        self.assertIn("api_key=xai_key", app)
+        demo = (EXAMPLE_CONTRACT.parent.parent.parent / "DEMO.md").read_text(encoding="utf-8")
+        self.assertIn("fixture library tile", demo.lower())
 
 
 class SystemPromptTests(unittest.TestCase):

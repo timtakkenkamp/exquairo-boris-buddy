@@ -22,7 +22,7 @@ from buddy_lib import (
     openai_key_configured,
     pct,
     persona_body,
-    advice_sets,
+    ranked_advice_sets,
     factors_for_advice_card,
     patient_can_influence,
     resolve_openai_api_key,
@@ -220,7 +220,9 @@ def _tile_cta(item: dict, theme: str) -> str:
     return TILE_CTA.get(str(item.get("id") or "")) or THEME_CTA.get(theme, "Open de stap")
 
 
-def render_advice_tile(factors: list[dict], item: dict, theme: str) -> None:
+def render_advice_tile(
+    factors: list[dict], item: dict, theme: str, *, primary: bool = False
+) -> None:
     """One column card: theme, action, chips, one sentence, attached CTA."""
     meta = THEME_META.get(theme, {"label": "Stap"})
     colors = THEME_COLORS.get(theme, THEME_COLORS["sport"])
@@ -232,9 +234,10 @@ def render_advice_tile(factors: list[dict], item: dict, theme: str) -> None:
         chip = f"{label} {shown}".strip() if shown else label
         chips.append(f'<span class="buddy-chip">{chip}</span>')
     chips_html = f'<div class="buddy-chips buddy-tile-chips">{"".join(chips)}</div>' if chips else ""
+    primary_class = " buddy-tile--primary" if primary else ""
     st.markdown(
         f"""
-<div class="buddy-tile" style="--buddy-tile-bar:{colors["bar"]};--buddy-tile-ink:{colors["ink"]};">
+<div class="buddy-tile{primary_class}" style="--buddy-tile-bar:{colors["bar"]};--buddy-tile-ink:{colors["ink"]};">
   <div class="buddy-tile-kicker">{meta["label"]}</div>
   <div class="buddy-tile-title">{item["title"]}</div>
   {chips_html}
@@ -259,7 +262,7 @@ def render_advice_tile(factors: list[dict], item: dict, theme: str) -> None:
 def _advice_chips(theme: str, payload: dict) -> list[dict]:
     """Factors from the matching advice set; body chips stay BMI / BRI / taille first."""
     group: list[dict] = []
-    for factors, _item, set_theme in advice_sets(payload, limit=3):
+    for factors, _item, set_theme in ranked_advice_sets(payload, limit=3):
         if set_theme == theme:
             group = list(factors)
             break
@@ -606,14 +609,22 @@ payload["top_factors"] = kept_factors
 st.markdown('<div class="buddy-voorjou-section buddy-tiles-flag">', unsafe_allow_html=True)
 sets = [
     (factors, item, theme)
-    for factors, item, theme in advice_sets(payload, limit=3)
+    for factors, item, theme in ranked_advice_sets(payload, limit=3)
     if any(patient_can_influence(factor) for factor in factors)
 ]
 if sets:
-    row = st.columns(len(sets))
-    for col, (factors, item, theme) in zip(row, sets):
-        with col:
-            render_advice_tile(factors, item, theme)
+    primary_factors, primary_item, primary_theme = sets[0]
+    st.markdown('<div class="buddy-voorjou-label">Start hier</div>', unsafe_allow_html=True)
+    st.markdown('<div class="buddy-tile-primary">', unsafe_allow_html=True)
+    render_advice_tile(primary_factors, primary_item, primary_theme, primary=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    secondaries = sets[1:3]
+    if secondaries:
+        st.markdown('<div class="buddy-voorjou-label buddy-voorjou-label--meer">Meer ideeën</div>', unsafe_allow_html=True)
+        row = st.columns(len(secondaries))
+        for col, (factors, item, theme) in zip(row, secondaries):
+            with col:
+                render_advice_tile(factors, item, theme)
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="buddy-chat-section">', unsafe_allow_html=True)

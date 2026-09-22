@@ -254,6 +254,59 @@ section.main,
   margin-top: 1.35rem;
 }
 
+.buddy-voorjou-label {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 750;
+  color: #1a4a6e;
+  margin: 0 0 0.55rem;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.buddy-voorjou-label--meer {
+  margin-top: 1.1rem;
+}
+
+.buddy-tile-primary {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.buddy-tile-primary .buddy-tile--primary {
+  min-height: 240px;
+}
+
+.buddy-tile-primary .buddy-tile-title {
+  font-size: 1.25rem;
+}
+
+/* Primary full-width: attach CTA under tile like secondary columns */
+.buddy-tile-primary [data-testid="stMarkdownContainer"],
+.buddy-tile-primary .stMarkdown,
+.buddy-tile-primary [data-testid="stMarkdown"] > div {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  align-items: stretch !important;
+}
+
+.buddy-tile-primary .buddy-tile {
+  border-radius: 20px 20px 0 0;
+  margin-bottom: 0;
+}
+
+.buddy-tile-primary .stButton > button {
+  background: #3d8bbf !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 0 0 18px 18px !important;
+  min-height: 2.65rem;
+  font-weight: 650 !important;
+  box-shadow: 0 10px 24px rgba(26, 74, 110, 0.05);
+}
+
 .buddy-tile-chips {
   margin: 0 0 12px;
   padding: 0;

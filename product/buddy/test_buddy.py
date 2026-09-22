@@ -446,7 +446,8 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn("audience_mode", app)
         self.assertIn('query_params.get("demo"', app)
         self.assertTrue((EXAMPLE_CONTRACT.parent / "assets" / "boris-mascot.png").is_file())
-        self.assertIn('class="buddy-tile"', app)
+        self.assertIn("buddy-tile{primary_class}", app)
+        self.assertIn("buddy-tile--primary", app)
         self.assertIn("buddy-tile-blurb", app)
         self.assertIn("buddy-tile-chips", app)
         self.assertIn("buddy-tile-spacer", app)
@@ -476,8 +477,14 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn("Zo doe je het", app)
         self.assertNotIn('"De route"', app)
         self.assertIn("render_advice_tile", app)
-        self.assertIn("advice_sets", app)
+        self.assertIn("ranked_advice_sets", app)
         self.assertIn("buddy-tiles-flag", app)
+        self.assertIn("Start hier", app)
+        self.assertIn("Meer ideeën", app)
+        self.assertIn("buddy-voorjou-label", app)
+        self.assertIn("buddy-tile-primary", app)
+        self.assertNotIn("voorjou_advice_sets", app)
+        self.assertNotIn("_THEME_RANK_TIE", app)
         self.assertIn('format="%.1f"', app)
         self.assertIn('width="128"', app)
         self.assertIn('vertical_alignment="bottom"', app)
@@ -511,7 +518,7 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn("_bri_sentence", app)
         self.assertNotIn("_sync_bri_to_waist", app)
         self.assertNotIn("whatif_bmi", app)
-        self.assertIn("advice_sets", app)
+        self.assertIn("ranked_advice_sets", app)
         self.assertIn('form_submit_button("Vraag", type="primary")', app)
         self.assertIn('type="primary"', app)
         self.assertNotIn("2. Voor jou", app)
@@ -542,6 +549,44 @@ class SimplifyTests(unittest.TestCase):
         self.assertNotIn("Kleine stappen. Grote impact.", app)
         self.assertIn("buddy-audience-flag", app)
         self.assertIn(".buddy-tile-chips", css)
+        self.assertIn(".buddy-voorjou-label", css)
+        self.assertIn(".buddy-tile-primary", css)
+        self.assertIn("1.1rem", css)
+
+
+class VoorjouLayoutTests(unittest.TestCase):
+    def test_home_wires_ranked_advice_sets_to_primary_secondary_layout(self):
+        """Homepage uses Backend ranked_advice_sets; layout labels + primary wrapper present."""
+        from pathlib import Path
+
+        from buddy_lib import apply_weight_whatif, load_personas, ranked_advice_sets
+
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        rest = ranked_advice_sets(river, limit=3)
+        self.assertTrue(rest)
+        self.assertEqual(rest[0][2], "sport")
+
+        flipped = apply_weight_whatif(
+            river, weight_kg=72.0, sleep_hours=4.0, move_min_week=120
+        )
+        after = ranked_advice_sets(flipped, limit=3)
+        self.assertEqual(after[0][2], "sleep")
+        self.assertNotEqual(
+            [theme for _g, _c, theme in rest],
+            [theme for _g, _c, theme in after],
+        )
+
+        app = (Path(__file__).resolve().parent / "app.py").read_text(encoding="utf-8")
+        self.assertIn("ranked_advice_sets(payload, limit=3)", app)
+        self.assertIn('buddy-voorjou-label">Start hier', app)
+        self.assertIn("Meer ideeën", app)
+        self.assertIn("buddy-tile-primary", app)
+        self.assertIn("primary=True", app)
+        self.assertNotIn("voorjou_advice_sets", app)
+        self.assertNotIn("_group_max_importance", app)
+        css = (Path(__file__).resolve().parent / "styles.css").read_text(encoding="utf-8")
+        self.assertIn(".buddy-voorjou-label", css)
+        self.assertIn(".buddy-tile-primary", css)
 
 
 class CopyTests(unittest.TestCase):

@@ -234,11 +234,11 @@ def render_advice_tile(factors: list[dict], item: dict, theme: str) -> None:
     chips_html = f'<div class="buddy-chips buddy-tile-chips">{"".join(chips)}</div>' if chips else ""
     st.markdown(
         f"""
-<div class="buddy-tile" style="--buddy-tile-bar:{colors["bar"]};--buddy-tile-ink:{colors["ink"]};background:#fff;border:1px solid #d5e6f2;border-top:8px solid {colors["bar"]};border-radius:20px 20px 0 0;padding:18px 16px 28px;">
-  <div class="buddy-tile-kicker" style="font-size:0.75rem;font-weight:750;letter-spacing:0.06em;text-transform:uppercase;color:{colors["ink"]};">{meta["label"]}</div>
-  <div class="buddy-tile-title" style="font-size:1.15rem;font-weight:750;color:#1A4A6E;margin:8px 0 10px;">{item["title"]}</div>
+<div class="buddy-tile" style="--buddy-tile-bar:{colors["bar"]};--buddy-tile-ink:{colors["ink"]};">
+  <div class="buddy-tile-kicker">{meta["label"]}</div>
+  <div class="buddy-tile-title">{item["title"]}</div>
   {chips_html}
-  <div class="buddy-tile-blurb" style="color:#3d5a70;font-size:0.94rem;line-height:1.45;padding-bottom:1.35rem;">{blurb}</div>
+  <div class="buddy-tile-blurb">{blurb}</div>
   <div class="buddy-tile-spacer" aria-hidden="true"></div>
 </div>
 """,

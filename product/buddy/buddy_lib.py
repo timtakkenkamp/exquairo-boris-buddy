@@ -467,7 +467,7 @@ def advice_why(theme: str, factors: list[dict[str, Any]]) -> str:
         if "alcohol" in ids and "kcal" not in ids:
             return "Wat je drinkt, kun je zelf kiezen."
         return "Eten en suikerdrank kun je zelf kiezen."
-    return "Een rustiger avond, geen slaaprecept."
+    return "Een rustiger avond met een vast ritueel."
 
 
 def advice_sets(

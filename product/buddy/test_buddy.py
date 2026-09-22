@@ -359,6 +359,20 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn("buddy-tile-chips", app)
         self.assertIn("buddy-tile-spacer", app)
         self.assertIn("Rondje plantsoen, grachten en Martinitoren", (EXAMPLE_CONTRACT.parent / "fixtures" / "persona-river.json").read_text(encoding="utf-8"))
+        river_fixture = (EXAMPLE_CONTRACT.parent / "fixtures" / "persona-river.json").read_text(encoding="utf-8")
+        self.assertIn(
+            "Kies een bedtijd en leg de telefoon 30 minuten eerder in een andere kamer.",
+            river_fixture,
+        )
+        self.assertNotIn("Slaap is geen recept", river_fixture)
+        self.assertNotIn("geen recept", river_fixture.lower())
+        contract_blob = EXAMPLE_CONTRACT.read_text(encoding="utf-8")
+        self.assertNotIn("Slaap is geen recept", contract_blob)
+        self.assertNotIn("geen recept", contract_blob.lower())
+        interventions = (EXAMPLE_CONTRACT.parent / "intervention_pages.py").read_text(encoding="utf-8")
+        self.assertNotIn("geen recept", interventions.lower())
+        self.assertNotIn("slaaprecept", interventions.lower())
+        self.assertNotIn("geen slaaprecept", (EXAMPLE_CONTRACT.parent / "buddy_lib.py").read_text(encoding="utf-8").lower())
         tile_fn = app.split("def render_advice_tile", 1)[1].split("def _advice_chips", 1)[0]
         self.assertLess(tile_fn.find("buddy-tile-kicker"), tile_fn.find("{chips_html}"))
         self.assertLess(tile_fn.find("buddy-tile-title"), tile_fn.find("{chips_html}"))
@@ -419,8 +433,15 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn(".buddy-step-card--wide", css)
         self.assertIn("align-items: stretch", css)
         self.assertIn("buddy-tile-blurb", css)
-        self.assertIn("padding-bottom: 1.35rem", css)
+        self.assertIn("--buddy-tile-pad-bottom: 12px", css)
+        self.assertIn("--buddy-tile-gap-sentence-button: 20px", css)
         self.assertIn("buddy-tile-spacer", css)
+        self.assertNotIn("padding-bottom: 1.35rem", css)
+        tile_fn = app.split("def render_advice_tile", 1)[1].split("def _advice_chips", 1)[0]
+        self.assertIn("--buddy-tile-bar:", tile_fn)
+        self.assertIn("--buddy-tile-ink:", tile_fn)
+        self.assertNotIn("padding-bottom:1.35rem", tile_fn)
+        self.assertNotIn("padding:18px 16px 28px", tile_fn)
         self.assertIn("height: auto !important", css)
         self.assertIn(".buddy-hero", css)
         self.assertIn("Shared lever chrome so BRI matches", css)
@@ -770,6 +791,12 @@ class SystemPromptTests(unittest.TestCase):
         self.assertNotIn("Sport / beweging", blob_after)
         self.assertNotIn("Coaching, geen recept.", blob_after)
         self.assertNotIn("advies, geen recept", blob_after.lower())
+        self.assertNotIn("Slaap is geen recept", blob_after)
+        self.assertNotIn("geen recept", blob_after.lower())
+        self.assertIn(
+            "Kies een bedtijd en leg de telefoon 30 minuten eerder in een andere kamer.",
+            blob_after,
+        )
         self.assertIn("rustiger avond", blob_after)
         self.assertNotIn("leefstijlknop", blob_after.lower())
         self.assertNotIn("risico-beeld", blob_after.lower())

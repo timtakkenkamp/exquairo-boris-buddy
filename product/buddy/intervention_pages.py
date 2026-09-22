@@ -14,7 +14,7 @@ MOVEMENT_GRONINGEN: dict[str, Any] = {
         "Geen schema voor atleten — een rondje dat je kunt onthouden. "
         "Groen, water, en de toren als herkenningspunt. Trek je jas aan en begin klein."
     ),
-    "why": "Wandelen hoort bij je gewicht en taille. Geen schema, geen recept.",
+    "why": "Wandelen hoort bij je gewicht en taille. Geen schema — een rondje dat je volhoudt.",
     "when": "Het liefst na een maaltijd, drie keer deze week — dezelfde schoenen, hetzelfde startpunt.",
     "duration": "30–45 minuten (ongeveer 3,5 km). Liever 25 minuten volhouden dan 60 minuten uitstellen.",
     "intensity": "Stevig wandeltempo: je kunt nog praten, je hoeft niet te hijgen. Bankjes onderweg zijn oké.",
@@ -60,7 +60,7 @@ SLEEP_PAGE: dict[str, Any] = {
         "Slaap is geen prestatie. Een vast avondritueel maakt de dag kleiner, "
         "niet perfecter."
     ),
-    "why": "Een rustiger avond hoort bij je slaap. Geen slaaprecept.",
+    "why": "Een rustiger avond hoort bij je slaap — een vast ritueel, geen prestatie.",
     "when": "Dertig minuten voor je gekozen bedtijd, vijf avonden deze week.",
     "duration": "30 minuten schermvrij — niet meer.",
     "intensity": "Licht dimmen, geen extra oefeningen verplicht.",

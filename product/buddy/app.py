@@ -395,25 +395,31 @@ def _sync_audience_persona() -> None:
         st.session_state.audience_persona = picked
 
 
-# Streamlit drops unused widget keys. Detail pages do not render sliders, so
-# whatif_* is gone on the way back and the widgets remount at their min.
+# Streamlit drops unused widget keys when detail hides the sliders. Without
+# persist_state="session", remounted sliders land on their range min — the
+# frontend does not adopt a backend re-seed. Keep/reseed + a pending flag cover
+# AppTest (which does not drop keys) and older runtimes.
 _WHATIF_SLIDER_KEYS = (
     "whatif_weight",
     "whatif_move",
     "whatif_sleep",
     "whatif_drinks",
 )
+_WHATIF_PERSIST_STATE = "session"
+_WHATIF_RESEED_PENDING = "_whatif_reseed_pending"
 
 
-def _keep_whatif_sliders() -> None:
+def _keep_whatif_sliders(*, pending_reseed: bool = False) -> None:
     for key in _WHATIF_SLIDER_KEYS:
         if key in st.session_state:
             st.session_state[f"_keep_{key}"] = st.session_state[key]
+    if pending_reseed:
+        st.session_state[_WHATIF_RESEED_PENDING] = True
 
 
-def _reseed_whatif_sliders() -> None:
+def _reseed_whatif_sliders(*, force: bool = False) -> None:
     for key in _WHATIF_SLIDER_KEYS:
-        if key in st.session_state:
+        if not force and key in st.session_state:
             continue
         kept = st.session_state.get(f"_keep_{key}")
         if kept is not None:
@@ -438,9 +444,11 @@ def apply_persona_state(persona_id: str, baseline: dict) -> None:
         st.session_state.whatif_persona = persona_id
         for key, value in defaults.items():
             st.session_state[key] = value
+        st.session_state.pop(_WHATIF_RESEED_PENDING, None)
         _keep_whatif_sliders()
     else:
-        _reseed_whatif_sliders()
+        force = bool(st.session_state.pop(_WHATIF_RESEED_PENDING, False))
+        _reseed_whatif_sliders(force=force)
         for key, value in defaults.items():
             st.session_state.setdefault(key, value)
     if persona_changed:
@@ -548,7 +556,7 @@ payload = payload_from_whatif(baseline, use_live)
 patient = payload["patient"]
 
 if st.session_state.get("buddy_view") == "detail":
-    _keep_whatif_sliders()
+    _keep_whatif_sliders(pending_reseed=True)
     render_detail_page(
         st.session_state.get("detail_theme") or "sport",
         patient["display_name"],
@@ -577,15 +585,37 @@ with st.container(border=True):
         format="%.1f",
         key="whatif_weight",
         on_change=_sync_weight_to_shape,
+        persist_state=_WHATIF_PERSIST_STATE,
     )
     st.markdown(f'<p class="buddy-bri-line">{_bri_sentence()}</p>', unsafe_allow_html=True)
     mcol, scol, dcol = st.columns(3, vertical_alignment="bottom")
     with mcol:
-        st.slider("Beweegminuten per week", 0, 420, step=10, key="whatif_move")
+        st.slider(
+            "Beweegminuten per week",
+            0,
+            420,
+            step=10,
+            key="whatif_move",
+            persist_state=_WHATIF_PERSIST_STATE,
+        )
     with scol:
-        st.slider("Slaap (uur per nacht)", 4.0, 10.0, step=0.5, key="whatif_sleep")
+        st.slider(
+            "Slaap (uur per nacht)",
+            4.0,
+            10.0,
+            step=0.5,
+            key="whatif_sleep",
+            persist_state=_WHATIF_PERSIST_STATE,
+        )
     with dcol:
-        st.slider("Suikerdranken per week", 0, 21, step=1, key="whatif_drinks")
+        st.slider(
+            "Suikerdranken per week",
+            0,
+            21,
+            step=1,
+            key="whatif_drinks",
+            persist_state=_WHATIF_PERSIST_STATE,
+        )
     if not AUDIENCE:
         if st.button("Reset"):
             st.session_state.whatif_reset = True

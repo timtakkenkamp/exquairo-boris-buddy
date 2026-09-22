@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import threading
+from datetime import timedelta
 from pathlib import Path
 
 import streamlit as st
@@ -17,17 +19,21 @@ from buddy_lib import (
     apply_weight_whatif,
     clip,
     factor_display_label,
+    fixture_tile_copy,
     load_default_system_prompt,
     load_personas,
+    lookup_tile_copy,
+    personalized_tile_copy_batch,
     xai_key_configured,
     pct,
     persona_body,
-    personalized_tile_copy,
     ranked_advice_sets,
     factors_for_advice_card,
     patient_can_influence,
     resolve_xai_api_key,
     risk_band_nl,
+    tile_copy_batch_signature,
+    tile_copy_fingerprint,
     validate_payload,
 )
 from intervention_pages import get_intervention_page
@@ -221,6 +227,108 @@ def _tile_cta(item: dict, theme: str) -> str:
     return TILE_CTA.get(str(item.get("id") or "")) or THEME_CTA.get(theme, "Open de stap")
 
 
+def _ensure_tile_copy_cache() -> dict:
+    if "tile_copy_cache" not in st.session_state:
+        st.session_state.tile_copy_cache = {}
+    return st.session_state.tile_copy_cache
+
+
+def _collect_finished_tile_copy_job(expected_sig: str) -> None:
+    """Merge a finished background batch into the session cache (quiet swap)."""
+    job = st.session_state.get("tile_copy_batch_job")
+    if not job:
+        return
+    if job.get("sig") != expected_sig:
+        # Persona / what-if changed — drop stale handle; worker may still finish.
+        st.session_state.pop("tile_copy_batch_job", None)
+        return
+    if not job.get("done"):
+        return
+    cache = _ensure_tile_copy_cache()
+    for fp, copy in (job.get("results") or {}).items():
+        cache[fp] = dict(copy)
+    st.session_state.tile_copy_source = job.get("source") or "fixture"
+    st.session_state.pop("tile_copy_batch_job", None)
+
+
+def ensure_tile_copy_batch(
+    payload: dict,
+    sets: list[tuple[list[dict], dict, str]],
+    api_key: str | None,
+) -> None:
+    """Fixture-first: never block the script on Grok; one background batch call.
+
+    First paint uses library titles. When the batch finishes, a fragment rerun
+    swaps only text fields via the session cache.
+    """
+    cache = _ensure_tile_copy_cache()
+    tiles = [(item, theme) for _factors, item, theme in sets]
+    if not tiles:
+        return
+    sig = tile_copy_batch_signature(payload, tiles)
+    _collect_finished_tile_copy_job(sig)
+
+    pending = [
+        (item, theme)
+        for item, theme in tiles
+        if tile_copy_fingerprint(payload, theme, item) not in cache
+    ]
+    if not pending:
+        if "tile_copy_source" not in st.session_state:
+            st.session_state.tile_copy_source = "cache"
+        return
+
+    key = resolve_xai_api_key(api_key)
+    if not key:
+        for item, theme in pending:
+            fp = tile_copy_fingerprint(payload, theme, item)
+            cache[fp] = fixture_tile_copy(item, theme)
+        st.session_state.tile_copy_source = "fixture"
+        return
+
+    job = st.session_state.get("tile_copy_batch_job")
+    if job and job.get("sig") == sig and not job.get("done"):
+        return
+
+    job_state: dict = {"sig": sig, "done": False, "results": {}, "source": "fixture"}
+    st.session_state.tile_copy_batch_job = job_state
+    # Snapshot for the worker thread (avoid reading session_state off-thread).
+    payload_snap = payload
+    pending_snap = list(pending)
+    key_snap = key
+
+    def _worker() -> None:
+        try:
+            results, source = personalized_tile_copy_batch(
+                payload_snap,
+                pending_snap,
+                api_key=key_snap,
+                cache=None,
+            )
+            job_state["results"] = results
+            job_state["source"] = source
+        except Exception:
+            job_state["results"] = {
+                tile_copy_fingerprint(payload_snap, theme, item): fixture_tile_copy(
+                    item, theme
+                )
+                for item, theme in pending_snap
+            }
+            job_state["source"] = "fixture"
+        finally:
+            job_state["done"] = True
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+@st.fragment(run_every=timedelta(milliseconds=450))
+def _poll_tile_copy_batch() -> None:
+    """Quietly rerun when the background batch lands — no zaal spinner/chrome."""
+    job = st.session_state.get("tile_copy_batch_job")
+    if job and job.get("done"):
+        st.rerun()
+
+
 def render_advice_tile(
     factors: list[dict],
     item: dict,
@@ -228,23 +336,19 @@ def render_advice_tile(
     *,
     primary: bool = False,
     payload: dict | None = None,
-    api_key: str | None = None,
 ) -> None:
     """One column card: theme, action, chips, one sentence, attached CTA.
 
-    Title/sentence/(cta) may be Grok-personalized when a key is present;
-    ranking and chip stack stay local.
+    Title/sentence/(cta) come from session cache or fixtures (never blocks on
+    network). Ranking and chip stack stay local.
     """
     meta = THEME_META.get(theme, {"label": "Stap"})
     colors = THEME_COLORS.get(theme, THEME_COLORS["sport"])
-    if "tile_copy_cache" not in st.session_state:
-        st.session_state.tile_copy_cache = {}
-    copy, _source = personalized_tile_copy(
+    copy, _source = lookup_tile_copy(
         payload or {},
         item,
         theme,
-        api_key=api_key,
-        cache=st.session_state.tile_copy_cache,
+        cache=_ensure_tile_copy_cache(),
     )
     title = copy.get("title") or item.get("title") or ""
     blurb = copy.get("sentence") or item.get("summary") or item.get("explanation") or ""
@@ -664,6 +768,7 @@ sets = [
     if any(patient_can_influence(factor) for factor in factors)
 ]
 if sets:
+    ensure_tile_copy_batch(payload, sets, xai_key)
     primary_factors, primary_item, primary_theme = sets[0]
     st.markdown('<div class="buddy-voorjou-label">Start hier</div>', unsafe_allow_html=True)
     st.markdown('<div class="buddy-tile-primary">', unsafe_allow_html=True)
@@ -673,7 +778,6 @@ if sets:
         primary_theme,
         primary=True,
         payload=payload,
-        api_key=xai_key,
     )
     st.markdown("</div>", unsafe_allow_html=True)
     secondaries = sets[1:3]
@@ -687,8 +791,8 @@ if sets:
                     item,
                     theme,
                     payload=payload,
-                    api_key=xai_key,
                 )
+    _poll_tile_copy_batch()
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="buddy-chat-section">', unsafe_allow_html=True)
@@ -703,6 +807,14 @@ if not AUDIENCE:
         st.caption(
             "Geen xAI-sleutel. Zet XAI_API_KEY (sidebar of secrets) — tot die tijd vaste teksten."
         )
+    # Werkplaats-only: library → Grok after quiet batch swap (never on zaal).
+    job = st.session_state.get("tile_copy_batch_job")
+    if job and not job.get("done"):
+        st.caption("Tegelteksten: library")
+    elif st.session_state.get("tile_copy_source") == "xai":
+        st.caption("Tegelteksten: Grok")
+    elif sets:
+        st.caption("Tegelteksten: library")
 with st.form(f"ask_buddy_{persona_id}", clear_on_submit=True):
     question = st.text_input(
         "Je vraag",

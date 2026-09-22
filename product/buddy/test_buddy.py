@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import unittest
 import unittest.mock
 
@@ -16,6 +17,7 @@ from buddy_lib import (
     PATIENT_RISK_COPY,
     SESSIE_CONTEXT_TOKEN,
     SYSTEM_PROMPT_FILE,
+    TILE_COPY_BATCH_SYSTEM_PROMPT,
     TILE_COPY_SYSTEM_PROMPT,
     XAI_BASE_URL,
     XAI_MODEL,
@@ -30,9 +32,11 @@ from buddy_lib import (
     load_default_system_prompt,
     load_payload,
     load_personas,
+    lookup_tile_copy,
     optional_llm_reply,
     persona_body,
     personalized_tile_copy,
+    personalized_tile_copy_batch,
     interventions_for_local_factors,
     advice_sets,
     advice_why,
@@ -43,6 +47,7 @@ from buddy_lib import (
     ranked_advice_sets,
     render_system_prompt,
     resolve_xai_api_key,
+    tile_copy_batch_signature,
     tile_copy_fingerprint,
     top_local_factors,
     validate_payload,
@@ -1006,17 +1011,135 @@ class PersonalizedTileCopyTests(unittest.TestCase):
 
     def test_app_wires_personalized_tile_copy(self):
         app = (EXAMPLE_CONTRACT.parent / "app.py").read_text(encoding="utf-8")
-        self.assertIn("personalized_tile_copy", app)
+        self.assertIn("personalized_tile_copy_batch", app)
+        self.assertIn("lookup_tile_copy", app)
+        self.assertIn("ensure_tile_copy_batch", app)
         self.assertIn("tile_copy_cache", app)
+        self.assertIn("_poll_tile_copy_batch", app)
+        self.assertIn("threading.Thread", app)
         tile_fn = app.split("def render_advice_tile", 1)[1].split("def _advice_chips", 1)[0]
         self.assertIn("buddy-tile-title", tile_fn)
         self.assertIn("{title}", tile_fn)
         self.assertIn("{blurb}", tile_fn)
+        self.assertIn("lookup_tile_copy", tile_fn)
+        self.assertNotIn("personalized_tile_copy(", tile_fn)
         self.assertLess(tile_fn.find("buddy-tile-title"), tile_fn.find("{chips_html}"))
         self.assertIn("payload=payload", app)
         self.assertIn("api_key=xai_key", app)
+        self.assertIn("Tegelteksten: library", app)
+        self.assertIn("Tegelteksten: Grok", app)
         demo = (EXAMPLE_CONTRACT.parent.parent.parent / "DEMO.md").read_text(encoding="utf-8")
         self.assertIn("fixture library tile", demo.lower())
+        self.assertIn("batch", demo.lower())
+
+    def test_lookup_is_fixture_first_without_network(self):
+        river, _factors, item, theme = self._river_sport()
+        with unittest.mock.patch("openai.OpenAI", side_effect=AssertionError("no network")):
+            copy, source = lookup_tile_copy(river, item, theme, cache={})
+        self.assertEqual(source, "fixture")
+        self.assertEqual(copy, fixture_tile_copy(item, theme))
+
+    def test_batch_mocked_one_api_call_for_ranked_tiles(self):
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        rows = ranked_advice_sets(river, limit=3)
+        tiles = [(item, theme) for _factors, item, theme in rows]
+        self.assertGreaterEqual(len(tiles), 2)
+        payload_tiles = []
+        for item, theme in tiles:
+            place = "Noorderplantsoen" if theme == "sport" else "Grote Markt"
+            payload_tiles.append(
+                {
+                    "id": item["id"],
+                    "title": f"{place} tip voor {theme}",
+                    "sentence": f"Pietje, klein stapje bij {place} past bij jou.",
+                    "cta": f"Open {place}",
+                }
+            )
+        payload_json = json.dumps({"tiles": payload_tiles})
+
+        class _Msg:
+            content = payload_json
+
+        class _Choice:
+            message = _Msg()
+
+        class _Resp:
+            choices = [_Choice()]
+
+        class _Completions:
+            calls = 0
+            kwargs = None
+
+            def create(self, **kwargs):
+                _Completions.calls += 1
+                _Completions.kwargs = kwargs
+                return _Resp()
+
+        class _Chat:
+            completions = _Completions()
+
+        class _Client:
+            last_kwargs = None
+
+            def __init__(self, **kwargs):
+                _Client.last_kwargs = kwargs
+                self.chat = _Chat()
+
+        cache: dict = {}
+        with unittest.mock.patch("openai.OpenAI", _Client):
+            results, source = personalized_tile_copy_batch(
+                river, tiles, api_key="xai-test", cache=cache
+            )
+        self.assertEqual(source, "xai")
+        self.assertEqual(_Completions.calls, 1)
+        self.assertEqual(_Client.last_kwargs["base_url"], XAI_BASE_URL)
+        self.assertIn("Groningen", _Completions.kwargs["messages"][0]["content"])
+        self.assertIn("tiles", TILE_COPY_BATCH_SYSTEM_PROMPT)
+        for item, theme in tiles:
+            fp = tile_copy_fingerprint(river, theme, item)
+            self.assertIn(fp, results)
+            self.assertIn(fp, cache)
+            self.assertTrue(
+                "Noorderplantsoen" in results[fp]["title"]
+                or "Grote Markt" in results[fp]["title"]
+            )
+        # Second batch hits cache — no new client.
+        with unittest.mock.patch("openai.OpenAI", side_effect=AssertionError("cache miss")):
+            again, source2 = personalized_tile_copy_batch(
+                river, tiles, api_key="xai-test", cache=cache
+            )
+        self.assertEqual(source2, "cache")
+        self.assertEqual(again, results)
+        sig = tile_copy_batch_signature(river, tiles)
+        heavier = apply_weight_whatif(river, weight_kg=100.0)
+        self.assertNotEqual(sig, tile_copy_batch_signature(heavier, tiles))
+
+    def test_batch_fallback_without_key(self):
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        tiles = [(item, theme) for _factors, item, theme in ranked_advice_sets(river, limit=3)]
+        with unittest.mock.patch("openai.OpenAI", side_effect=AssertionError("no network")):
+            results, source = personalized_tile_copy_batch(river, tiles, api_key="")
+        self.assertEqual(source, "fixture")
+        for item, theme in tiles:
+            fp = tile_copy_fingerprint(river, theme, item)
+            self.assertEqual(results[fp], fixture_tile_copy(item, theme))
+
+    def test_batch_api_failure_falls_back_to_fixture(self):
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        tiles = [(item, theme) for _factors, item, theme in ranked_advice_sets(river, limit=2)]
+
+        class _Client:
+            def __init__(self, **kwargs):
+                raise RuntimeError("timeout")
+
+        with unittest.mock.patch("openai.OpenAI", _Client):
+            results, source = personalized_tile_copy_batch(
+                river, tiles, api_key="xai-bad"
+            )
+        self.assertEqual(source, "fixture")
+        for item, theme in tiles:
+            fp = tile_copy_fingerprint(river, theme, item)
+            self.assertEqual(results[fp]["title"], item["title"])
 
 
 class SystemPromptTests(unittest.TestCase):

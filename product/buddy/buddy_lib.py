@@ -1274,7 +1274,7 @@ GRONINGEN_PLACES_HINT = (
     "Hortus, Kardinge, Diepenring, Paddepoel, Helpman, Vismarkt"
 )
 
-TILE_COPY_SYSTEM_PROMPT = f"""Je schrijft Nederlandse tegelteksten voor Boris, een elektronische leefstijl-buddy.
+_TILE_COPY_RULES = f"""Je schrijft Nederlandse tegelteksten voor Boris, een elektronische leefstijl-buddy.
 Dit is coaching in een demo-app — geen arts, geen diagnose, geen medicatie.
 
 Regels:
@@ -1285,11 +1285,20 @@ Regels:
 - title: kort (max ~70 tekens), concreet, met plek of sfeer.
 - sentence: één zin (max ~160 tekens), fun coaching, noemt een echte Groninger plek.
 - cta: optionele korte knoptekst (max ~40 tekens); weglaten mag.
-- Geen emoji, geen opsommingen, geen Engelse producttaal.
+- Geen emoji, geen opsommingen, geen Engelse producttaal."""
+
+TILE_COPY_SYSTEM_PROMPT = f"""{_TILE_COPY_RULES}
 
 Antwoord ALLEEN met JSON-object:
 {{"title":"...","sentence":"...","cta":"..."}}
 cta mag ontbreken. Geen markdown, geen uitleg buiten JSON.
+"""
+
+TILE_COPY_BATCH_SYSTEM_PROMPT = f"""{_TILE_COPY_RULES}
+
+Antwoord ALLEEN met JSON-object voor ALLE gevraagde tegels (één item per id):
+{{"tiles":[{{"id":"...","title":"...","sentence":"...","cta":"..."}}, ...]}}
+cta mag per tegel ontbreken. Geen markdown, geen uitleg buiten JSON.
 """
 
 
@@ -1337,7 +1346,7 @@ def _mentions_groningen_place(text: str) -> bool:
     return any(needle in blob for needle in GRONINGEN_PLACE_NEEDLES)
 
 
-def _parse_tile_copy_json(raw: str) -> dict[str, str] | None:
+def _coerce_json_object(raw: str) -> dict[str, Any] | None:
     text = (raw or "").strip()
     if not text:
         return None
@@ -1354,8 +1363,10 @@ def _parse_tile_copy_json(raw: str) -> dict[str, str] | None:
             data = json.loads(match.group(0))
         except json.JSONDecodeError:
             return None
-    if not isinstance(data, dict):
-        return None
+    return data if isinstance(data, dict) else None
+
+
+def _fields_from_tile_dict(data: dict[str, Any]) -> dict[str, str] | None:
     title = str(data.get("title") or "").strip()
     sentence = str(data.get("sentence") or data.get("summary") or "").strip()
     if not title or not sentence:
@@ -1366,6 +1377,37 @@ def _parse_tile_copy_json(raw: str) -> dict[str, str] | None:
     cta = str(data.get("cta") or "").strip()
     if cta and len(cta) <= 48:
         out["cta"] = cta
+    return out
+
+
+def _parse_tile_copy_json(raw: str) -> dict[str, str] | None:
+    data = _coerce_json_object(raw)
+    if not data:
+        return None
+    return _fields_from_tile_dict(data)
+
+
+def _parse_tile_copy_batch_json(raw: str) -> dict[str, dict[str, str]]:
+    """Map card id → copy fields from a batch Grok payload."""
+    data = _coerce_json_object(raw)
+    if not data:
+        return {}
+    rows = data.get("tiles")
+    if not isinstance(rows, list):
+        # Single-object fallback (model ignored batch wrapper).
+        single = _fields_from_tile_dict(data)
+        if not single:
+            return {}
+        item_id = str(data.get("id") or "").strip()
+        return {item_id: single} if item_id else {"": single}
+    out: dict[str, dict[str, str]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        item_id = str(row.get("id") or "").strip()
+        parsed = _fields_from_tile_dict(row)
+        if item_id and parsed:
+            out[item_id] = parsed
     return out
 
 
@@ -1394,6 +1436,37 @@ def _tile_copy_user_prompt(
     )
 
 
+def _tile_copy_batch_user_prompt(
+    payload: dict[str, Any],
+    tiles: list[tuple[dict[str, Any], str]],
+) -> str:
+    patient = payload.get("patient") or {}
+    name = patient.get("display_name") or "deze persoon"
+    persona_id = patient.get("persona_id") or ""
+    context = build_session_context(payload)
+    lines = [
+        f"Schrijf tegelcopy voor {name} ({persona_id}) — één JSON-item per kaart-id.",
+        "Huidige sessie:",
+        context,
+        "Tegels:",
+    ]
+    for item, theme in tiles:
+        meta = THEME_META.get(theme, {"label": theme})
+        fixture = fixture_tile_copy(item, theme)
+        lines.extend(
+            [
+                f"- id={item.get('id') or theme} · thema {meta.get('label')} ({theme})",
+                f"  Fixture-titel: {fixture['title']}",
+                f"  Fixture-zin: {fixture['sentence']}",
+            ]
+        )
+    lines.append(
+        "Maak title + sentence per tegel persoonlijk op persona en what-if. "
+        "Noem minstens één echte Groninger plek per tegel. JSON alleen."
+    )
+    return "\n".join(lines)
+
+
 def _validate_tile_copy(copy: dict[str, str]) -> bool:
     blob = f"{copy.get('title', '')} {copy.get('sentence', '')}"
     if _looks_like_medical_advice(blob):
@@ -1401,6 +1474,115 @@ def _validate_tile_copy(copy: dict[str, str]) -> bool:
     if not _mentions_groningen_place(blob):
         return False
     return True
+
+
+def tile_copy_batch_signature(
+    payload: dict[str, Any],
+    tiles: list[tuple[dict[str, Any], str]],
+) -> str:
+    """Fingerprint for the whole ranked set (persona + what-if + card ids)."""
+    return "||".join(tile_copy_fingerprint(payload, theme, item) for item, theme in tiles)
+
+
+def lookup_tile_copy(
+    payload: dict[str, Any],
+    item: dict[str, Any],
+    theme: str,
+    *,
+    cache: dict[str, dict[str, str]] | None = None,
+) -> tuple[dict[str, str], str]:
+    """Session cache or fixture only — never touches the network (fixture-first UI)."""
+    fallback = fixture_tile_copy(item, theme)
+    key = tile_copy_fingerprint(payload, theme, item)
+    if cache is not None and key in cache:
+        return dict(cache[key]), "cache"
+    return dict(fallback), "fixture"
+
+
+def personalized_tile_copy_batch(
+    payload: dict[str, Any],
+    tiles: list[tuple[dict[str, Any], str]],
+    *,
+    api_key: str | None = None,
+    cache: dict[str, dict[str, str]] | None = None,
+) -> tuple[dict[str, dict[str, str]], str]:
+    """One Grok call for all ranked Voor-jou tiles; fills optional session cache.
+
+    Returns ``({fingerprint: copy}, source)``. Missing key / API / validation
+    failures keep fixture library copy per tile (silent). Ranking stays local.
+    """
+    if not tiles:
+        return {}, "fixture"
+
+    by_fp: dict[str, dict[str, str]] = {}
+    pending: list[tuple[dict[str, Any], str, str]] = []
+    for item, theme in tiles:
+        fp = tile_copy_fingerprint(payload, theme, item)
+        if cache is not None and fp in cache:
+            by_fp[fp] = dict(cache[fp])
+        else:
+            pending.append((item, theme, fp))
+
+    if not pending:
+        return by_fp, "cache"
+
+    fixtures = {
+        fp: fixture_tile_copy(item, theme) for item, theme, fp in pending
+    }
+    xai_key = resolve_xai_api_key(api_key)
+    if not xai_key:
+        for fp, copy in fixtures.items():
+            by_fp[fp] = dict(copy)
+            if cache is not None:
+                cache[fp] = dict(copy)
+        return by_fp, "fixture"
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        for fp, copy in fixtures.items():
+            by_fp[fp] = dict(copy)
+            if cache is not None:
+                cache[fp] = dict(copy)
+        return by_fp, "fixture"
+
+    prompt_tiles = [(item, theme) for item, theme, _fp in pending]
+    messages = [
+        {"role": "system", "content": TILE_COPY_BATCH_SYSTEM_PROMPT},
+        {"role": "user", "content": _tile_copy_batch_user_prompt(payload, prompt_tiles)},
+    ]
+    try:
+        client = OpenAI(api_key=xai_key, base_url=XAI_BASE_URL, timeout=18.0)
+        response = client.chat.completions.create(
+            model=os.environ.get("XAI_MODEL", XAI_MODEL),
+            temperature=0.7,
+            messages=messages,
+        )
+        raw = ((response.choices[0].message.content) or "").strip()
+    except Exception:
+        for fp, copy in fixtures.items():
+            by_fp[fp] = dict(copy)
+            if cache is not None:
+                cache[fp] = dict(copy)
+        return by_fp, "fixture"
+
+    parsed_by_id = _parse_tile_copy_batch_json(raw)
+    # Single-object replies without id: accept only when exactly one tile pending.
+    anonymous = parsed_by_id.pop("", None)
+    any_xai = False
+    for item, theme, fp in pending:
+        item_id = str(item.get("id") or theme or "").strip()
+        parsed = parsed_by_id.get(item_id)
+        if parsed is None and anonymous is not None and len(pending) == 1:
+            parsed = anonymous
+        if parsed and _validate_tile_copy(parsed):
+            by_fp[fp] = dict(parsed)
+            any_xai = True
+        else:
+            by_fp[fp] = dict(fixtures[fp])
+        if cache is not None:
+            cache[fp] = dict(by_fp[fp])
+    return by_fp, ("xai" if any_xai else "fixture")
 
 
 def personalized_tile_copy(
@@ -1413,9 +1595,10 @@ def personalized_tile_copy(
 ) -> tuple[dict[str, str], str]:
     """Overlay Grok Dutch title/sentence/(cta) for one Voor-jou tile.
 
-    Ranking stays with ``ranked_advice_sets``. Missing key or API/validation
-    failure → fixture library copy. Optional ``cache`` is keyed by
-    ``tile_copy_fingerprint`` for the session.
+    Home uses ``personalized_tile_copy_batch`` (one request for the ranked set).
+    This helper stays for single-tile callers and unit tests. Ranking stays with
+    ``ranked_advice_sets``. Missing key or API/validation failure → fixture
+    library copy. Optional ``cache`` is keyed by ``tile_copy_fingerprint``.
     """
     fallback = fixture_tile_copy(item, theme)
     key = tile_copy_fingerprint(payload, theme, item)

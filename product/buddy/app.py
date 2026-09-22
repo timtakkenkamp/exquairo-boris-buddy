@@ -7,6 +7,7 @@ from pathlib import Path
 
 import streamlit as st
 
+import buddy_lib
 from buddy_lib import (
     CHAT_PLACEHOLDER,
     OPENAI_MODEL,
@@ -29,6 +30,9 @@ from buddy_lib import (
     risk_band_nl,
     validate_payload,
 )
+
+# Prefer Backend ranked_advice_sets when present; thin FE sort until it lands.
+_THEME_RANK_TIE = {"sport": 0, "food": 1, "sleep": 2}
 from intervention_pages import get_intervention_page
 from live_model import models_available, overlay_live_predictions
 from model_adapter import body_roundness_index
@@ -220,7 +224,41 @@ def _tile_cta(item: dict, theme: str) -> str:
     return TILE_CTA.get(str(item.get("id") or "")) or THEME_CTA.get(theme, "Open de stap")
 
 
-def render_advice_tile(factors: list[dict], item: dict, theme: str) -> None:
+def _group_max_importance(factors: list[dict]) -> float:
+    return max((float(factor.get("importance") or 0) for factor in factors), default=0.0)
+
+
+def voorjou_advice_sets(
+    payload: dict, limit: int = 3
+) -> list[tuple[list[dict], dict, str]]:
+    """Home Voor jou tiles: Backend ranked_advice_sets when available, else FE sort.
+
+    Ranking (LOCKED): max(importance) per advice group, tie-break sport → food → sleep.
+    Does not rewrite buddy_lib — temporary adapter until Backend helper lands.
+    """
+    backend_ranked = getattr(buddy_lib, "ranked_advice_sets", None)
+    if callable(backend_ranked):
+        rows = list(backend_ranked(payload, limit=limit))
+    else:
+        # Build all groups (≤3 themes), then sort — advice_sets alone is fixed ADVICE_GROUPS order.
+        rows = list(advice_sets(payload, limit=max(limit, 3)))
+        rows.sort(
+            key=lambda row: (
+                -_group_max_importance(row[0]),
+                _THEME_RANK_TIE.get(row[2], 9),
+            )
+        )
+        rows = rows[:limit]
+    return [
+        (factors, item, theme)
+        for factors, item, theme in rows
+        if any(patient_can_influence(factor) for factor in factors)
+    ][:limit]
+
+
+def render_advice_tile(
+    factors: list[dict], item: dict, theme: str, *, primary: bool = False
+) -> None:
     """One column card: theme, action, chips, one sentence, attached CTA."""
     meta = THEME_META.get(theme, {"label": "Stap"})
     colors = THEME_COLORS.get(theme, THEME_COLORS["sport"])
@@ -232,9 +270,10 @@ def render_advice_tile(factors: list[dict], item: dict, theme: str) -> None:
         chip = f"{label} {shown}".strip() if shown else label
         chips.append(f'<span class="buddy-chip">{chip}</span>')
     chips_html = f'<div class="buddy-chips buddy-tile-chips">{"".join(chips)}</div>' if chips else ""
+    primary_class = " buddy-tile--primary" if primary else ""
     st.markdown(
         f"""
-<div class="buddy-tile" style="--buddy-tile-bar:{colors["bar"]};--buddy-tile-ink:{colors["ink"]};">
+<div class="buddy-tile{primary_class}" style="--buddy-tile-bar:{colors["bar"]};--buddy-tile-ink:{colors["ink"]};">
   <div class="buddy-tile-kicker">{meta["label"]}</div>
   <div class="buddy-tile-title">{item["title"]}</div>
   {chips_html}
@@ -259,7 +298,7 @@ def render_advice_tile(factors: list[dict], item: dict, theme: str) -> None:
 def _advice_chips(theme: str, payload: dict) -> list[dict]:
     """Factors from the matching advice set; body chips stay BMI / BRI / taille first."""
     group: list[dict] = []
-    for factors, _item, set_theme in advice_sets(payload, limit=3):
+    for factors, _item, set_theme in voorjou_advice_sets(payload, limit=3):
         if set_theme == theme:
             group = list(factors)
             break
@@ -604,16 +643,20 @@ for factor in list(payload.get("top_factors") or []) + list(payload.get("persona
     kept_factors.append(factor)
 payload["top_factors"] = kept_factors
 st.markdown('<div class="buddy-voorjou-section buddy-tiles-flag">', unsafe_allow_html=True)
-sets = [
-    (factors, item, theme)
-    for factors, item, theme in advice_sets(payload, limit=3)
-    if any(patient_can_influence(factor) for factor in factors)
-]
+sets = voorjou_advice_sets(payload, limit=3)
 if sets:
-    row = st.columns(len(sets))
-    for col, (factors, item, theme) in zip(row, sets):
-        with col:
-            render_advice_tile(factors, item, theme)
+    primary_factors, primary_item, primary_theme = sets[0]
+    st.markdown('<div class="buddy-voorjou-label">Start hier</div>', unsafe_allow_html=True)
+    st.markdown('<div class="buddy-tile-primary">', unsafe_allow_html=True)
+    render_advice_tile(primary_factors, primary_item, primary_theme, primary=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    secondaries = sets[1:3]
+    if secondaries:
+        st.markdown('<div class="buddy-voorjou-label buddy-voorjou-label--meer">Meer ideeën</div>', unsafe_allow_html=True)
+        row = st.columns(len(secondaries))
+        for col, (factors, item, theme) in zip(row, secondaries):
+            with col:
+                render_advice_tile(factors, item, theme)
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="buddy-chat-section">', unsafe_allow_html=True)

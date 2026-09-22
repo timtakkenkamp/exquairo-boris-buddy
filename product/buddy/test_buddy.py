@@ -446,7 +446,8 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn("audience_mode", app)
         self.assertIn('query_params.get("demo"', app)
         self.assertTrue((EXAMPLE_CONTRACT.parent / "assets" / "boris-mascot.png").is_file())
-        self.assertIn('class="buddy-tile"', app)
+        self.assertIn("buddy-tile{primary_class}", app)
+        self.assertIn("buddy-tile--primary", app)
         self.assertIn("buddy-tile-blurb", app)
         self.assertIn("buddy-tile-chips", app)
         self.assertIn("buddy-tile-spacer", app)
@@ -476,8 +477,13 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn("Zo doe je het", app)
         self.assertNotIn('"De route"', app)
         self.assertIn("render_advice_tile", app)
-        self.assertIn("advice_sets", app)
+        self.assertIn("voorjou_advice_sets", app)
         self.assertIn("buddy-tiles-flag", app)
+        self.assertIn("Start hier", app)
+        self.assertIn("Meer ideeën", app)
+        self.assertIn("buddy-voorjou-label", app)
+        self.assertIn("buddy-tile-primary", app)
+        self.assertIn("ranked_advice_sets", app)
         self.assertIn('format="%.1f"', app)
         self.assertIn('width="128"', app)
         self.assertIn('vertical_alignment="bottom"', app)
@@ -511,7 +517,7 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn("_bri_sentence", app)
         self.assertNotIn("_sync_bri_to_waist", app)
         self.assertNotIn("whatif_bmi", app)
-        self.assertIn("advice_sets", app)
+        self.assertIn("voorjou_advice_sets", app)
         self.assertIn('form_submit_button("Vraag", type="primary")', app)
         self.assertIn('type="primary"', app)
         self.assertNotIn("2. Voor jou", app)
@@ -542,6 +548,62 @@ class SimplifyTests(unittest.TestCase):
         self.assertNotIn("Kleine stappen. Grote impact.", app)
         self.assertIn("buddy-audience-flag", app)
         self.assertIn(".buddy-tile-chips", css)
+        self.assertIn(".buddy-voorjou-label", css)
+        self.assertIn(".buddy-tile-primary", css)
+        self.assertIn("1.1rem", css)
+
+
+class VoorjouLayoutTests(unittest.TestCase):
+    def test_ranked_order_prefers_max_importance_with_theme_tiebreak(self):
+        """FE adapter ranks groups by max(importance); sport beats food/sleep on ties."""
+        from pathlib import Path
+
+        from buddy_lib import advice_sets, apply_weight_whatif, load_personas
+
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+        theme_tie = {"sport": 0, "food": 1, "sleep": 2}
+
+        def strength(factors):
+            return max((float(f.get("importance") or 0) for f in factors), default=0.0)
+
+        rest_sorted = sorted(
+            advice_sets(river, limit=3),
+            key=lambda row: (-strength(row[0]), theme_tie.get(row[2], 9)),
+        )
+        self.assertEqual(rest_sorted[0][2], "sport")
+        self.assertIn("sleep", [t for _, _, t in rest_sorted])
+
+        # Worse sleep + lighter weight: sleep importance can overtake BMI → primary sleep.
+        flipped = apply_weight_whatif(river, weight_kg=72.0, sleep_hours=4.0)
+        flipped_rows = sorted(
+            advice_sets(flipped, limit=3),
+            key=lambda row: (-strength(row[0]), theme_tie.get(row[2], 9)),
+        )
+        self.assertEqual(
+            flipped_rows[0][2],
+            "sleep",
+            msg=[(t, strength(g)) for g, _, t in flipped_rows],
+        )
+        self.assertNotEqual(
+            [t for _, _, t in rest_sorted],
+            [t for _, _, t in flipped_rows],
+        )
+        app = (Path(__file__).resolve().parent / "app.py").read_text(encoding="utf-8")
+        self.assertIn('buddy-voorjou-label">Start hier', app)
+        self.assertIn("Meer ideeën", app)
+        self.assertIn("buddy-tile-primary", app)
+        self.assertIn("voorjou_advice_sets", app)
+        self.assertIn("primary=True", app)
+
+    def test_tie_break_sport_before_food_before_sleep(self):
+        theme_tie = {"sport": 0, "food": 1, "sleep": 2}
+        rows = [
+            ([{"importance": 0.2}], {"id": "sleep-wind-down"}, "sleep"),
+            ([{"importance": 0.2}], {"id": "food-pattern"}, "food"),
+            ([{"importance": 0.2}], {"id": "activity-walks"}, "sport"),
+        ]
+        rows.sort(key=lambda row: (-0.2, theme_tie.get(row[2], 9)))
+        self.assertEqual([t for _, _, t in rows], ["sport", "food", "sleep"])
 
 
 class CopyTests(unittest.TestCase):

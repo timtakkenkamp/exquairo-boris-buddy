@@ -19,7 +19,7 @@ uv run streamlit run product/buddy/app.py --server.headless true
 # zaal view: add ?demo=1
 ```
 
-Optional OpenAI key for chat: copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`.
+Optional xAI key for Grok chat: copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and set `XAI_API_KEY`.
 
 ## Note
 

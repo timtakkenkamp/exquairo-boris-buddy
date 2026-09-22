@@ -1058,23 +1058,24 @@ def template_reply(question: str, payload: dict[str, Any]) -> str:
     )
 
 
-OPENAI_MODEL = "gpt-4o-mini"
-OPENAI_AUTH_MESSAGE = (
-    "Die OpenAI-sleutel wordt niet geaccepteerd. Plak een geldige key "
-    "(begint meestal met sk-) in de sidebar of in .streamlit/secrets.toml."
+XAI_BASE_URL = "https://api.x.ai/v1"
+# Current xAI chat model (OpenAI-compatible /v1). Override with XAI_MODEL.
+XAI_MODEL = "grok-4"
+CHAT_RUNTIME_ERROR_MESSAGE = (
+    "Even geen antwoord van Boris. Probeer het zo opnieuw."
 )
 
 
-def resolve_openai_api_key(*candidates: str | None) -> str:
-    """First non-empty candidate, then OPENAI_API_KEY from the environment."""
+def resolve_xai_api_key(*candidates: str | None) -> str:
+    """First non-empty candidate, then XAI_API_KEY from the environment."""
     for raw in candidates:
         if raw and str(raw).strip():
             return str(raw).strip()
-    return os.environ.get("OPENAI_API_KEY", "").strip()
+    return os.environ.get("XAI_API_KEY", "").strip()
 
 
-def openai_key_configured(*candidates: str | None) -> bool:
-    return bool(resolve_openai_api_key(*candidates))
+def xai_key_configured(*candidates: str | None) -> bool:
+    return bool(resolve_xai_api_key(*candidates))
 
 
 def load_default_system_prompt() -> str:
@@ -1159,8 +1160,8 @@ def optional_llm_reply(
     history: list[tuple[str, str]] | None = None,
     system_prompt: str | None = None,
 ) -> tuple[str, str]:
-    """Return (text, source). Uses the official OpenAI client when a key is present."""
-    key = resolve_openai_api_key(api_key)
+    """Return (text, source). Uses OpenAI-compatible client against xAI when a key is present."""
+    key = resolve_xai_api_key(api_key)
     if not key:
         return fallback, "template"
 
@@ -1180,19 +1181,20 @@ def optional_llm_reply(
     messages.append({"role": "user", "content": question})
 
     try:
-        client = OpenAI(api_key=key, timeout=12.0)
+        client = OpenAI(api_key=key, base_url=XAI_BASE_URL, timeout=12.0)
         response = client.chat.completions.create(
-            model=os.environ.get("OPENAI_MODEL", OPENAI_MODEL),
+            model=os.environ.get("XAI_MODEL", XAI_MODEL),
             temperature=0.4,
             messages=messages,
         )
         text = ((response.choices[0].message.content) or "").strip()
-        return text or fallback, "openai"
+        return text or fallback, "xai"
     except Exception as exc:
+        # Never surface API bodies or keys in the UI; log shape only server-side.
         blob = f"{type(exc).__name__} {exc}".lower()
         if any(token in blob for token in ("auth", "401", "invalid_api_key", "incorrect api key")):
-            return OPENAI_AUTH_MESSAGE, "openai-auth"
-        return fallback, "openai-error"
+            return CHAT_RUNTIME_ERROR_MESSAGE, "xai-auth"
+        return CHAT_RUNTIME_ERROR_MESSAGE, "xai-error"
 
 
 # Output filter: real medical advice only. Bare start/neem/stop/take are
@@ -1234,6 +1236,6 @@ def answer_question(
         history=history,
         system_prompt=system_prompt,
     )
-    if source == "openai" and _looks_like_medical_advice(reply):
+    if source == "xai" and _looks_like_medical_advice(reply):
         return DEFLECT_MESSAGE, "guardrail-post"
     return reply, source

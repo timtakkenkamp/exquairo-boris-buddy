@@ -9,7 +9,7 @@ import streamlit as st
 
 from buddy_lib import (
     CHAT_PLACEHOLDER,
-    OPENAI_MODEL,
+    XAI_MODEL,
     THEME_META,
     WAIST_CM_PER_KG,
     answer_question,
@@ -19,13 +19,13 @@ from buddy_lib import (
     factor_display_label,
     load_default_system_prompt,
     load_personas,
-    openai_key_configured,
+    xai_key_configured,
     pct,
     persona_body,
     ranked_advice_sets,
     factors_for_advice_card,
     patient_can_influence,
-    resolve_openai_api_key,
+    resolve_xai_api_key,
     risk_band_nl,
     validate_payload,
 )
@@ -376,9 +376,9 @@ def _bri_sentence() -> str:
     )
 
 
-def _secrets_openai_key() -> str:
+def _secrets_xai_key() -> str:
     try:
-        return str(st.secrets.get("OPENAI_API_KEY", "") or "").strip()
+        return str(st.secrets.get("XAI_API_KEY", "") or "").strip()
     except Exception:
         return ""
 
@@ -507,24 +507,24 @@ else:
             format_func=lambda pid: by_id[pid]["patient"]["display_name"],
             label_visibility="collapsed",
         )
-        stored_key = _secrets_openai_key()
+        stored_key = _secrets_xai_key()
         st.caption(
             f"{by_id[persona_id]['patient']['display_name']}, "
             f"{by_id[persona_id]['patient'].get('age', '—')} · "
             f"start {persona_body(by_id[persona_id])['weight_kg']:.0f} kg"
         )
-        with st.expander("OpenAI-sleutel", expanded=not openai_key_configured(stored_key)):
+        with st.expander("xAI-sleutel (Grok)", expanded=not xai_key_configured(stored_key)):
             st.text_input(
-                "OpenAI API key",
+                "xAI API key",
                 type="password",
-                key="openai_api_key",
-                placeholder="sk-…",
-                help="Zelfde patroon als eerdere opdracht: plak hier, of zet OPENAI_API_KEY in .streamlit/secrets.toml. Wordt niet gecommit.",
+                key="xai_api_key",
+                placeholder="plak sleutel",
+                help="Plak hier, of zet XAI_API_KEY in .streamlit/secrets.toml. Wordt niet gecommit.",
             )
-            st.caption("Of: omgeving OPENAI_API_KEY, of kopieer secrets.toml.example naar secrets.toml.")
+            st.caption("Of: omgeving XAI_API_KEY, of kopieer secrets.toml.example naar secrets.toml.")
         with st.expander("System prompt (demo)", expanded=False):
             st.caption(
-                "Zoals bij Barbecue Bob: vaste rol-instructie voor OpenAI. "
+                "Zoals bij Barbecue Bob: vaste rol-instructie voor Grok. "
                 "Patiënten zien dit niet in de hoofdchat. Sessie-context van Pietje/Sam/Noor wordt eronder geplakt."
             )
             st.text_area("System prompt", key="system_prompt", height=280)
@@ -539,9 +539,9 @@ else:
 baseline = by_id[persona_id]
 apply_persona_state(persona_id, baseline)
 
-openai_key = resolve_openai_api_key(
-    st.session_state.get("openai_api_key"),
-    _secrets_openai_key(),
+xai_key = resolve_xai_api_key(
+    st.session_state.get("xai_api_key"),
+    _secrets_xai_key(),
 )
 
 payload = payload_from_whatif(baseline, use_live)
@@ -633,10 +633,12 @@ if "chat" not in st.session_state or st.session_state.get("chat_persona") != per
     st.session_state.chat = []
     st.session_state.chat_persona = persona_id
 if not AUDIENCE:
-    if openai_key:
-        st.caption(f"Verbonden met OpenAI · {OPENAI_MODEL}")
+    if xai_key:
+        st.caption(f"Verbonden met Grok · {XAI_MODEL}")
     else:
-        st.caption("Geen API-sleutel. Plak er een in de sidebar — tot die tijd vaste teksten.")
+        st.caption(
+            "Geen xAI-sleutel. Zet XAI_API_KEY (sidebar of secrets) — tot die tijd vaste teksten."
+        )
 with st.form(f"ask_buddy_{persona_id}", clear_on_submit=True):
     question = st.text_input(
         "Je vraag",
@@ -650,7 +652,7 @@ if asked:
     reply, source = answer_question(
         question,
         payload,
-        api_key=openai_key,
+        api_key=xai_key,
         history=history,
         system_prompt=st.session_state.get("system_prompt"),
     )

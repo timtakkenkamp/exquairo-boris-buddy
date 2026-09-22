@@ -20,7 +20,7 @@ streamlit run product/buddy/app.py
 
 Open the URL Streamlit prints (usually http://localhost:8501). Sidebar: **Pietje / Sam / Noor**.
 
-**Zaalweergave:** `http://localhost:8501/?demo=1` of de knop **Zaalweergave** in de werkplaats-sidebar. Sidebar is weg; persona is drie pillen onder *Hoi Pietje*. Key komt uit `secrets.toml` / `OPENAI_API_KEY`. Zonder `?demo=1` is het de werkplaats.
+**Zaalweergave:** `http://localhost:8501/?demo=1` of de knop **Zaalweergave** in de werkplaats-sidebar. Sidebar is weg; persona is drie pillen onder *Hoi Pietje*. Key komt uit `secrets.toml` / `XAI_API_KEY`. Zonder `?demo=1` is het de werkplaats.
 
 ## What was simplified
 
@@ -40,17 +40,17 @@ Official mascot: `product/buddy/assets/boris-mascot.png` (top-left header). See 
 - Movement detail: Groningen Plantsoen–gracht–Martini-lus + back
 - Personas Pietje / Sam / Noor
 - Guardrails: no meds, no triage
-- Chat via OpenAI when a key is present (sidebar, `.streamlit/secrets.toml`, or `OPENAI_API_KEY`); otherwise Dutch templates
+- Chat via xAI / Grok when a key is present (sidebar, `.streamlit/secrets.toml`, or `XAI_API_KEY`); otherwise Dutch templates
 
-## OpenAI chat (zelfde patroon als eerdere opdracht)
+## Grok chat (xAI)
 
-De vragenbox **Vraag het Boris** gebruikt `gpt-4o-mini` zodra er een sleutel is. De sleutel wordt niet gecommit.
+De vragenbox **Vraag het aan Boris** gebruikt `grok-4` via `https://api.x.ai/v1` zodra er een sleutel is. De sleutel wordt niet gecommit.
 
-1. Plak de key in de sidebar onder **OpenAI-sleutel**, of
-2. Kopieer `.streamlit/secrets.toml.example` naar `.streamlit/secrets.toml` en vul `OPENAI_API_KEY` in, of
-3. Zet `OPENAI_API_KEY` in je omgeving.
+1. Plak de key in de sidebar onder **xAI-sleutel (Grok)**, of
+2. Kopieer `.streamlit/secrets.toml.example` naar `.streamlit/secrets.toml` en vul `XAI_API_KEY` in, of
+3. Zet `XAI_API_KEY` in je omgeving.
 
-Zonder sleutel blijft de demo werken met vaste Nederlandse teksten. Medische vragen worden nog steeds geweigerd voordat OpenAI wordt aangeroepen.
+Zonder sleutel blijft de demo werken met vaste Nederlandse teksten. Medische vragen worden nog steeds geweigerd voordat xAI wordt aangeroepen. Op zaal (`?demo=1`) geen vendor-namen in de UI.
 
 De system prompt staat in `prompts/boris_system.md` (Barbecue Bob-stijl: rol, toon, grenzen, voorbeelden). Per vraag plakt de app de actuele demo-kaart (risico’s, factoren, tegels) op `{SESSIE_CONTEXT}`. In de sidebar zit een dichte expander **System prompt (demo)** om te itereren, plus **Herstel default**. Dat is voor ons, niet voor de patiënt. Regex-guardrails blijven de harde deur.
 

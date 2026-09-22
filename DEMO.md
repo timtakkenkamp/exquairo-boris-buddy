@@ -11,6 +11,6 @@ uv run streamlit run product/buddy/app.py \
 
 Open **http://127.0.0.1:8501/?demo=1** (zaal / patient UI).
 
-Optional chat: copy `.streamlit/secrets.toml.example` → `.streamlit/secrets.toml` and set `OPENAI_API_KEY`.
+Optional chat (Grok / xAI): copy `.streamlit/secrets.toml.example` → `.streamlit/secrets.toml` and set `XAI_API_KEY`. Calls go to `https://api.x.ai/v1`. Without a key, `?demo=1` uses Dutch template replies.
 
 Portfolio index: https://github.com/timtakkenkamp/Exquairo

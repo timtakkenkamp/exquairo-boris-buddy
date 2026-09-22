@@ -9,13 +9,15 @@ import unittest.mock
 from intervention_pages import get_intervention_page
 from buddy_lib import (
     CHAT_PLACEHOLDER,
+    CHAT_RUNTIME_ERROR_MESSAGE,
     DEFLECT_MESSAGE,
     EMPTY_QUESTION_MESSAGE,
     EXAMPLE_CONTRACT,
-    OPENAI_AUTH_MESSAGE,
     PATIENT_RISK_COPY,
     SESSIE_CONTEXT_TOKEN,
     SYSTEM_PROMPT_FILE,
+    XAI_BASE_URL,
+    XAI_MODEL,
     answer_question,
     apply_lifestyle_overlay,
     apply_weight_whatif,
@@ -37,7 +39,7 @@ from buddy_lib import (
     pick_primary_intervention,
     ranked_advice_sets,
     render_system_prompt,
-    resolve_openai_api_key,
+    resolve_xai_api_key,
     top_local_factors,
     validate_payload,
 )
@@ -503,6 +505,12 @@ class SimplifyTests(unittest.TestCase):
         self.assertIn("buddy_ask_{persona_id}", app)
         self.assertNotIn('st.caption("OpenAI")', app)
         self.assertNotIn('st.caption("Vaste tekst")', app)
+        self.assertIn("Verbonden met Grok", app)
+        self.assertIn("xAI-sleutel (Grok)", app)
+        self.assertIn("XAI_API_KEY", app)
+        self.assertNotIn("OPENAI_API_KEY", app)
+        self.assertNotIn("OpenAI-sleutel", app)
+        self.assertNotIn('placeholder="sk-', app)
         self.assertIn("buddy-whatif-flag", app)
         self.assertIn("format_factor_value", app)
         self.assertNotIn("Taille (cm)", app)
@@ -681,8 +689,8 @@ class GuardrailTests(unittest.TestCase):
                 self.chat = _Chat()
 
         with unittest.mock.patch("openai.OpenAI", _Client):
-            text, source = answer_question(question, river, api_key="sk-test")
-        self.assertEqual(source, "openai")
+            text, source = answer_question(question, river, api_key="xai-test")
+        self.assertEqual(source, "xai")
         self.assertNotEqual(text, DEFLECT_MESSAGE)
         self.assertIn("plantsoen", text.lower())
     def test_live_final_models_score_all_personas(self):
@@ -735,12 +743,12 @@ class GuardrailTests(unittest.TestCase):
                     self.assertNotIn("sports", {factor.get("id") for factor in group})
 
 
-class OpenAIHookTests(unittest.TestCase):
-    def test_resolve_openai_api_key_prefers_argument(self):
-        self.assertEqual(resolve_openai_api_key("  sk-demo  ", "sk-other"), "sk-demo")
-        self.assertEqual(resolve_openai_api_key("", None, "sk-third"), "sk-third")
+class XAIHookTests(unittest.TestCase):
+    def test_resolve_xai_api_key_prefers_argument(self):
+        self.assertEqual(resolve_xai_api_key("  xai-demo  ", "xai-other"), "xai-demo")
+        self.assertEqual(resolve_xai_api_key("", None, "xai-third"), "xai-third")
 
-    def test_mocked_openai_client_returns_model_text(self):
+    def test_mocked_xai_client_returns_model_text(self):
         river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
 
         class _Msg:
@@ -763,7 +771,10 @@ class OpenAIHookTests(unittest.TestCase):
             completions = _Completions()
 
         class _Client:
+            last_kwargs = None
+
             def __init__(self, **kwargs):
+                _Client.last_kwargs = kwargs
                 self.kwargs = kwargs
                 self.chat = _Chat()
 
@@ -771,11 +782,13 @@ class OpenAIHookTests(unittest.TestCase):
             text, source = answer_question(
                 "Hoe kan ik meer wandelen?",
                 river,
-                api_key="sk-test",
+                api_key="xai-test",
                 history=[("Eerder", "Eerder antwoord")],
             )
-        self.assertEqual(source, "openai")
+        self.assertEqual(source, "xai")
         self.assertIn("noorderplantsoen", text.lower())
+        self.assertEqual(_Client.last_kwargs["base_url"], XAI_BASE_URL)
+        self.assertEqual(_Completions.kwargs["model"], XAI_MODEL)
         messages = _Completions.kwargs["messages"]
         self.assertEqual(messages[0]["role"], "system")
         self.assertIn("Boris", messages[0]["content"])
@@ -784,7 +797,7 @@ class OpenAIHookTests(unittest.TestCase):
         self.assertNotIn(SESSIE_CONTEXT_TOKEN, messages[0]["content"])
         self.assertEqual(messages[-1]["content"], "Hoe kan ik meer wandelen?")
 
-    def test_bad_key_returns_auth_copy(self):
+    def test_bad_key_returns_runtime_copy(self):
         river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
 
         class _Client:
@@ -796,10 +809,36 @@ class OpenAIHookTests(unittest.TestCase):
                 "Hoe kan ik meer wandelen?",
                 river,
                 "fallback",
-                api_key="sk-bad",
+                api_key="xai-bad",
             )
-        self.assertEqual(source, "openai-auth")
-        self.assertEqual(text, OPENAI_AUTH_MESSAGE)
+        self.assertEqual(source, "xai-auth")
+        self.assertEqual(text, CHAT_RUNTIME_ERROR_MESSAGE)
+        self.assertNotIn("sk-", text.lower())
+        self.assertNotIn("api", text.lower())
+
+    def test_runtime_error_returns_soft_copy_not_fallback(self):
+        river = next(p for p in load_personas() if p["patient"]["persona_id"] == "persona-river")
+
+        class _Client:
+            def __init__(self, **kwargs):
+                self.chat = self
+
+            @property
+            def completions(self):
+                return self
+
+            def create(self, **kwargs):
+                raise RuntimeError("timeout connecting to host")
+
+        with unittest.mock.patch("openai.OpenAI", _Client):
+            text, source = optional_llm_reply(
+                "Hoe kan ik meer wandelen?",
+                river,
+                "template-fallback-should-not-appear",
+                api_key="xai-ok",
+            )
+        self.assertEqual(source, "xai-error")
+        self.assertEqual(text, CHAT_RUNTIME_ERROR_MESSAGE)
 
 
 class SystemPromptTests(unittest.TestCase):
@@ -846,7 +885,7 @@ class SystemPromptTests(unittest.TestCase):
         self.assertFalse(workshop.exception)
         self.assertTrue(any("Live model" in t.label for t in workshop.toggle))
         self.assertTrue(any(t.label == "System prompt" for t in workshop.text_area))
-        self.assertTrue(any("OpenAI API key" in (i.label or "") for i in workshop.text_input))
+        self.assertTrue(any("xAI API key" in (i.label or "") for i in workshop.text_input))
 
         demo = AppTest.from_file(app_path, default_timeout=45)
         demo.query_params["demo"] = "1"
@@ -854,6 +893,7 @@ class SystemPromptTests(unittest.TestCase):
         self.assertFalse(demo.exception)
         self.assertFalse(any("Live model" in t.label for t in demo.toggle))
         self.assertFalse(any(t.label == "System prompt" for t in demo.text_area))
+        self.assertFalse(any("xAI API key" in (i.label or "") for i in demo.text_input))
         self.assertFalse(any("OpenAI API key" in (i.label or "") for i in demo.text_input))
         self.assertNotIn("Hoi Pietje", [t.value for t in demo.title])
         self.assertFalse(any(s.value.startswith(("1.", "2.", "3.")) for s in demo.subheader))
@@ -1056,7 +1096,14 @@ class SystemPromptTests(unittest.TestCase):
                 any(
                     label in cap
                     for cap in captions
-                    for label in ("OpenAI", "Guardrail", "Vaste tekst", "Sleutel geweigerd")
+                    for label in (
+                        "OpenAI",
+                        "xAI",
+                        "Grok",
+                        "Guardrail",
+                        "Vaste tekst",
+                        "Sleutel geweigerd",
+                    )
                 ),
                 msg=f"{name} still shows a source caption: {captions}",
             )
@@ -1116,7 +1163,13 @@ class SystemPromptTests(unittest.TestCase):
             next(b for b in demo.button if b.label == "Vraag").click().run()
             self.assertFalse(demo.exception, msg=f"{name} lifestyle chat crashed")
             self.assertTrue(demo.session_state.get("chat"), msg=f"{name} no lifestyle reply")
-            self.assertFalse(any("OpenAI" in str(c.value) for c in demo.caption))
+            self.assertFalse(
+                any(
+                    vendor in str(c.value)
+                    for c in demo.caption
+                    for vendor in ("OpenAI", "xAI", "Grok")
+                )
+            )
 
             box = next(i for i in demo.text_input if i.label == "Je vraag")
             box.set_value("Welke dosis metformine moet ik nemen?")
@@ -1125,7 +1178,13 @@ class SystemPromptTests(unittest.TestCase):
             _q, reply, source = demo.session_state.chat[-1]
             self.assertTrue(str(source).startswith("guardrail"), msg=source)
             self.assertIn("zorgverlener", reply)
-            self.assertFalse(any("OpenAI" in str(c.value) for c in demo.caption))
+            self.assertFalse(
+                any(
+                    vendor in str(c.value)
+                    for c in demo.caption
+                    for vendor in ("OpenAI", "xAI", "Grok")
+                )
+            )
 
             ctas = [b for b in demo.button if b.label not in {"Reset", "Vraag"}]
             self.assertTrue(ctas, msg=f"{name} has no advice tiles")

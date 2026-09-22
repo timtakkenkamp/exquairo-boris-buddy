@@ -742,8 +742,11 @@ def _apply_lifestyle_factors(
                 clip(base_imp + sign * SPORTS_FACTOR_COEF * d_move, 0.04, 0.55), 4
             )
             if fid == "sports":
-                factor["patient_value"] = f"{move_min_week:.0f}"
-                factor["unit"] = "min/week"
+                # Keep Sam-style commute narrative for chips; still update importance.
+                existing = str(factor.get("patient_value") or "")
+                if "woon-werk" not in existing.lower():
+                    factor["patient_value"] = f"{move_min_week:.0f}"
+                    factor["unit"] = "min/week"
             factor["note"] = "Mock what-if contribution — not a trained attribution."
         elif fid == "sleep":
             if sleep_hours >= SLEEP_PROTECT_HOURS:

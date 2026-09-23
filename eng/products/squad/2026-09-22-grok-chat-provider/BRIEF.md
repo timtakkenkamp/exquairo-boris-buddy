@@ -1,7 +1,7 @@
 # BRIEF — grok-chat-provider
 
 ROUND 1 | ROLE Product | STATUS: **LOCKED** (David gate)  
-Datum: 2026-09-22 · Repo: `timtakkenkamp/exquairo-boris-buddy` · Zaal: `?demo=1`  
+Datum: 2026-09-22 · Repo: `timtakkenkamp/boris-buddy` · Zaal: `?demo=1`  
 Poort: David · Tim: only via David
 
 ## Outcome
@@ -40,4 +40,4 @@ Replace the OpenAI chat provider with **Grok / xAI** for the in-app chat only, s
 - Base URL: `https://api.x.ai/v1`.
 
 ## Artifact path
-`/workspace/eng/exquairo/squad/2026-09-22-grok-chat-provider/`
+`/workspace/eng/products/squad/2026-09-22-grok-chat-provider/`

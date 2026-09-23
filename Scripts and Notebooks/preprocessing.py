@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 
-def load_and_clean(path="data/raw/exquairo_ai_bootcamp_synth_dataset.csv"):
+def load_and_clean(path="data/raw/boris_buddy_synth_dataset.csv"):
     """
     Laadt de data en doet de gedeelde opschoonstappen.
     Geeft terug: X (schone features), y (target).
@@ -52,7 +52,7 @@ def scale_data(X_train, X_test):
     # return X_train_scaled, X_test_scaled
 
 
-def get_data(path="data/raw/exquairo_ai_bootcamp_synth_dataset.csv", random_state=42):
+def get_data(path="data/raw/boris_buddy_synth_dataset.csv", random_state=42):
     """
     Hoofdfunctie: roept de bovenstaande functies aan en bundelt de eindproducten.
     Dit is de enige functie die de teamleden hoeven aan te roepen.

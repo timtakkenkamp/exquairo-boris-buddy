@@ -15,4 +15,4 @@ What-if levers (gewicht / beweeg / slaap / suikerdranken) keep the active person
 
 Optional chat + tile copy (Grok / xAI): copy `.streamlit/secrets.toml.example` → `.streamlit/secrets.toml` and set `XAI_API_KEY`. Calls go to `https://api.x.ai/v1`. Without a key, `?demo=1` uses Dutch template chat replies and fixture library tile titles/sentences. Home paints fixture tile text first, then one batch Grok call quietly swaps titles/sentences (no zaal spinner).
 
-Portfolio index: https://github.com/timtakkenkamp/Exquairo
+Portfolio index: https://github.com/timtakkenkamp/products

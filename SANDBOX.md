@@ -1,6 +1,6 @@
 # Sandbox rules (Tim only)
 
-This is Tim Takkenkamp’s **standalone** ExquAIro / Boris buddy repository on `timtakkenkamp/exquairo-boris-buddy`.
+This is Tim Takkenkamp’s **standalone** Boris Buddy / Boris buddy repository on `timtakkenkamp/boris-buddy`.
 
 ## Rules
 

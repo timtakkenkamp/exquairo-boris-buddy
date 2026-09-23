@@ -70,7 +70,7 @@ Not a trained model. BMI direction flips at 25. Height/length is not a patient l
 uv run python product/buddy/test_buddy.py
 ```
 
-Keep all work in this repository (`timtakkenkamp/exquairo-boris-buddy`).
+Keep all work in this repository (`timtakkenkamp/boris-buddy`).
 
 ## Live models (stap 3)
 
